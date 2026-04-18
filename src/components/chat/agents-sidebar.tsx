@@ -1,9 +1,15 @@
-import Link from "next/link";
-import { cn } from "@/lib/utils";
-import type { Agent } from "@/types/database";
+"use client";
+
+import { useMemo, useState } from "react";
+import { Search } from "lucide-react";
+import type { AgentListItem } from "@/types/database";
+import { Input } from "@/components/ui/input";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { AgentsSidebarContent } from "@/components/chat/agents-sidebar-content";
+import { MobileSidebarTrigger } from "@/components/chat/mobile-sidebar-trigger";
 
 type AgentsSidebarProps = {
-  agents: Agent[];
+  agents: AgentListItem[];
   activeSlug?: string;
 };
 
@@ -11,51 +17,68 @@ export function AgentsSidebar({
   agents,
   activeSlug,
 }: AgentsSidebarProps) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+
+  const filteredAgents = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+
+    if (!normalized) return agents;
+
+    return agents.filter((agent) => {
+      return (
+        agent.nome.toLowerCase().includes(normalized) ||
+        (agent.descricao ?? "").toLowerCase().includes(normalized) ||
+        (agent.last_message_preview ?? "").toLowerCase().includes(normalized)
+      );
+    });
+  }, [agents, query]);
+
+  const sidebarInner = (
+    <div className="flex h-full flex-col">
+      <div className="border-b border-border/60 px-5 py-4">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Buscar agentes..."
+            className="h-11 rounded-2xl border-border/60 bg-background/60 pl-9"
+          />
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <AgentsSidebarContent
+          agents={filteredAgents}
+          activeSlug={activeSlug}
+          onNavigate={() => setOpen(false)}
+        />
+      </div>
+    </div>
+  );
+
   return (
-    <aside className="w-full max-w-sm border-r border-zinc-800 bg-zinc-900/80">
-      <div className="border-b border-zinc-800 px-4 py-4">
-        <h1 className="text-lg font-semibold text-zinc-100">Pandora</h1>
-        <p className="text-sm text-zinc-400">Seus agentes disponíveis</p>
+    <>
+      <aside className="hidden w-full max-w-sm border-r border-border/60 bg-card/60 backdrop-blur-2xl md:block">
+        {sidebarInner}
+      </aside>
+
+      <div className="md:hidden">
+        <div className="fixed left-4 top-4 z-50">
+          <MobileSidebarTrigger onClick={() => setOpen(true)} />
+        </div>
+
+        <Sheet open={open} onOpenChange={setOpen}>
+          <SheetContent
+            side="left"
+            className="w-[88vw] max-w-sm border-border/60 bg-card/90 p-0 backdrop-blur-2xl"
+          >
+            <SheetTitle className="sr-only">Agentes</SheetTitle>
+            {sidebarInner}
+          </SheetContent>
+        </Sheet>
       </div>
-
-      <div className="flex flex-col">
-        {agents.length === 0 ? (
-          <div className="px-4 py-6 text-sm text-zinc-400">
-            Nenhum agente disponível.
-          </div>
-        ) : (
-          agents.map((agent) => {
-            const isActive = activeSlug === agent.slug;
-
-            return (
-              <Link
-                key={agent.id}
-                href={`/chat/${agent.slug}`}
-                className={cn(
-                  "flex w-full items-start gap-3 border-b border-zinc-800 px-4 py-4 text-left transition hover:bg-zinc-800/60",
-                  isActive && "bg-zinc-800/80"
-                )}
-              >
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-zinc-700 text-sm font-semibold text-zinc-100">
-                  {agent.nome.slice(0, 2).toUpperCase()}
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="truncate font-medium text-zinc-100">
-                      {agent.nome}
-                    </p>
-                  </div>
-
-                  <p className="mt-1 line-clamp-2 text-sm text-zinc-400">
-                    {agent.descricao ?? "Sem descrição."}
-                  </p>
-                </div>
-              </Link>
-            );
-          })
-        )}
-      </div>
-    </aside>
+    </>
   );
 }

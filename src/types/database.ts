@@ -44,3 +44,8 @@ export type ConversationWithAgent = {
       }[]
     | null;
 };
+
+export type AgentListItem = Agent & {
+  last_message_preview?: string | null;
+  last_message_at?: string | null;
+};
