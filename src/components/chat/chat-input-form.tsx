@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
-import { useFormState } from "react-dom";
+import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import { sendMessage } from "@/server/actions/chat-actions";
 import { ChatTextarea } from "@/components/chat/chat-textarea";
 import { ChatSubmitButton } from "@/components/chat/chat-submit-button";
@@ -24,7 +23,7 @@ export function ChatInputForm({
   onSendingChange,
 }: ChatInputFormProps) {
   const formRef = useRef<HTMLFormElement | null>(null);
-  const [state, formAction] = useFormState(sendMessage, initialState);
+  const [state, formAction] = useActionState(sendMessage, initialState);
   const [localPending, setLocalPending] = useState(false);
   const [, startTransition] = useTransition();
 

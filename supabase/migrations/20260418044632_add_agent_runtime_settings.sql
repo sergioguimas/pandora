@@ -33,3 +33,22 @@ create trigger trg_agents_set_updated_at
 before update on public.agents
 for each row
 execute function public.set_agents_updated_at();
+
+create policy "agents_insert_authenticated"
+on public.agents
+for insert
+to authenticated
+with check (true);
+
+create policy "agents_update_authenticated"
+on public.agents
+for update
+to authenticated
+using (true)
+with check (true);
+
+create policy "agents_delete_authenticated"
+on public.agents
+for delete
+to authenticated
+using (true);
