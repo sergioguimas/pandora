@@ -46,8 +46,13 @@ export function ChatPanel({
 
   const renderedMessages = useMemo(() => localMessages, [localMessages]);
 
+  const hasStreamingMessage = renderedMessages.some(
+    (message) => message.role === "assistant" && message.isStreaming
+  );
+
   async function handleSendMessage(content: string) {
     const trimmed = content.trim();
+
     if (!trimmed || sending) return;
 
     const userMessage = createTempMessage("user", trimmed, conversationId);
@@ -75,74 +80,91 @@ export function ChatPanel({
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
+
       let done = false;
       let accumulated = "";
+      let buffer = "";
 
       while (!done) {
         const result = await reader.read();
         done = result.done;
 
-        if (result.value) {
-          const chunk = decoder.decode(result.value, { stream: true });
-          const lines = chunk.split("\n").filter(Boolean);
+        if (!result.value) continue;
 
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
+        buffer += decoder.decode(result.value, { stream: true });
 
-            const payload = line.slice(6);
+        const events = buffer.split("\n\n");
+        buffer = events.pop() ?? "";
 
-            if (payload === "[DONE]") {
-              continue;
-            }
+        for (const event of events) {
+          const lines = event.split("\n");
+          const dataLines = lines
+            .filter((line) => line.startsWith("data: "))
+            .map((line) => line.slice(6));
 
-            const parsed = JSON.parse(payload) as
-              | { type: "token"; token: string }
-              | { type: "final"; message?: Message }
-              | { type: "error"; error: string };
+          if (dataLines.length === 0) continue;
 
-            if (parsed.type === "token") {
-              accumulated += parsed.token;
+          const payload = dataLines.join("\n");
 
-              setLocalMessages((prev) => {
-                const next = [...prev];
-                const lastIndex = next.length - 1;
+          if (payload === "[DONE]") {
+            continue;
+          }
 
-                if (lastIndex >= 0 && next[lastIndex]?.role === "assistant") {
-                  next[lastIndex] = {
-                    ...next[lastIndex],
-                    content: accumulated,
-                    isStreaming: true,
-                  };
-                }
+          const parsed = JSON.parse(payload) as
+            | { type: "token"; token: string }
+            | { type: "final"; message?: Message }
+            | { type: "error"; error: string };
 
-                return next;
-              });
-            }
+          if (parsed.type === "token") {
+            accumulated += parsed.token;
 
-            if (parsed.type === "final") {
-              setLocalMessages((prev) => {
-                const next = [...prev];
-                const lastIndex = next.length - 1;
+            setLocalMessages((prev) => {
+              const next = [...prev];
+              const lastIndex = next.length - 1;
 
-                if (lastIndex >= 0 && next[lastIndex]?.role === "assistant") {
-                  next[lastIndex] = {
-                    ...(parsed.message ??
-                      {
+              if (lastIndex >= 0 && next[lastIndex]?.role === "assistant") {
+                next[lastIndex] = {
+                  ...next[lastIndex],
+                  content: accumulated,
+                  isStreaming: true,
+                };
+              }
+
+              return next;
+            });
+          }
+
+          if (parsed.type === "final") {
+            setLocalMessages((prev) => {
+              const next = [...prev];
+              const lastIndex = next.length - 1;
+
+              if (lastIndex >= 0 && next[lastIndex]?.role === "assistant") {
+                next[lastIndex] = {
+                  ...(parsed.message
+                    ? parsed.message
+                    : {
                         ...next[lastIndex],
                         content: accumulated,
+                        metadata: next[lastIndex]?.metadata ?? null,
+                        created_at: next[lastIndex]?.created_at ?? new Date().toISOString(),
                       }),
-                    content: parsed.message?.content ?? accumulated,
-                    isStreaming: false,
-                  };
-                }
+                  content: parsed.message?.content ?? accumulated,
+                  metadata: parsed.message?.metadata ?? next[lastIndex]?.metadata ?? null,
+                  created_at:
+                    parsed.message?.created_at ??
+                    next[lastIndex]?.created_at ??
+                    new Date().toISOString(),
+                  isStreaming: false,
+                };
+              }
 
-                return next;
-              });
-            }
+              return next;
+            });
+          }
 
-            if (parsed.type === "error") {
-              throw new Error(parsed.error);
-            }
+          if (parsed.type === "error") {
+            throw new Error(parsed.error);
           }
         }
       }
@@ -177,7 +199,8 @@ export function ChatPanel({
             messages={renderedMessages}
             agentName={agentName}
           />
-          {sending && <ChatTypingIndicator />}
+
+          {sending && !hasStreamingMessage && <ChatTypingIndicator />}
         </div>
       </div>
 

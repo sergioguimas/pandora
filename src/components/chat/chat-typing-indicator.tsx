@@ -1,37 +1,50 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
 
-export function ChatTypingIndicator() {
+type ChatTypingIndicatorProps = {
+  inline?: boolean;
+  label?: string;
+};
+
+const dotVariants = {
+  initial: { y: 0, opacity: 0.45 },
+  animate: { y: [-1, -7, 0], opacity: [0.45, 1, 0.45] },
+};
+
+export function ChatTypingIndicator({
+  inline = false,
+  label = "Digitando...",
+}: ChatTypingIndicatorProps) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="flex justify-start"
-    >
-      <div className="rounded-3xl rounded-bl-md border border-border/60 bg-card/90 px-4 py-3 shadow-sm backdrop-blur-xl">
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs text-muted-foreground">Digitando</span>
+    <div className={cn(inline ? "flex items-center" : "flex w-full justify-start")}>
+      <div
+        className={cn(
+          "flex items-center gap-2 rounded-[2rem] border border-border/60 bg-card/70 px-4 py-3 shadow-sm",
+          inline && "border-0 bg-transparent p-0 shadow-none"
+        )}
+      >
+        <span className="text-sm text-muted-foreground">{label}</span>
 
-          <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5">
+          {[0, 1, 2].map((index) => (
             <motion.span
-              animate={{ y: [0, -3, 0] }}
-              transition={{ repeat: Infinity, duration: 0.9, delay: 0 }}
-              className="h-1.5 w-1.5 rounded-full bg-muted-foreground"
+              key={index}
+              variants={dotVariants}
+              initial="initial"
+              animate="animate"
+              transition={{
+                duration: 0.9,
+                repeat: Infinity,
+                ease: "easeInOut",
+                delay: index * 0.15,
+              }}
+              className="h-2 w-2 rounded-full bg-muted-foreground/80"
             />
-            <motion.span
-              animate={{ y: [0, -3, 0] }}
-              transition={{ repeat: Infinity, duration: 0.9, delay: 0.15 }}
-              className="h-1.5 w-1.5 rounded-full bg-muted-foreground"
-            />
-            <motion.span
-              animate={{ y: [0, -3, 0] }}
-              transition={{ repeat: Infinity, duration: 0.9, delay: 0.3 }}
-              className="h-1.5 w-1.5 rounded-full bg-muted-foreground"
-            />
-          </div>
+          ))}
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }

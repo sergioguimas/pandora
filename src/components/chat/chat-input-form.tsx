@@ -43,14 +43,16 @@ export function ChatInputForm({
 
     try {
       setLocalPending(true);
-      await onSubmitMessage(content);
 
+      // limpa imediatamente
       formRef.current.reset();
-
       textarea.style.height = "auto";
-      textarea.focus();
+      textarea.blur();
+
+      await onSubmitMessage(content);
     } finally {
       setLocalPending(false);
+      textarea.focus();
     }
   }
 
