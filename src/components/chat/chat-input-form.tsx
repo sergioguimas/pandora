@@ -4,6 +4,8 @@ import { useActionState, useEffect, useRef, useState, useTransition } from "reac
 import { sendMessage } from "@/server/actions/chat-actions";
 import { ChatTextarea } from "@/components/chat/chat-textarea";
 import { ChatSubmitButton } from "@/components/chat/chat-submit-button";
+import { cn } from "@/lib/utils";
+import { Sparkles } from "lucide-react";
 
 type ChatInputFormProps = {
   conversationId: string;
@@ -40,8 +42,7 @@ export function ChatInputForm({
       ) as HTMLTextAreaElement | null;
 
       if (textarea) {
-        textarea.style.height = "0px";
-        textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
+        textarea.style.height = "auto";
         textarea.focus();
       }
 
@@ -59,7 +60,6 @@ export function ChatInputForm({
     if (!textarea) return;
 
     const content = textarea.value.trim();
-
     if (!content) return;
 
     const formData = new FormData(formRef.current);
@@ -75,22 +75,43 @@ export function ChatInputForm({
         setLocalPending(true);
         startTransition(() => formAction(formData));
       }}
-      className="mx-auto flex w-full max-w-4xl items-end gap-3 px-4 py-4 md:px-6 md:py-5"
+      className="mx-auto flex w-full max-w-4xl items-end gap-3 px-4 py-6 md:px-8 md:py-8"
     >
       <input type="hidden" name="conversationId" value={conversationId} />
       <input type="hidden" name="redirectPath" value={redirectPath} />
 
-      <div className="flex flex-1 items-end gap-3 rounded-3xl border border-border/60 bg-card/80 px-4 py-3 shadow-sm backdrop-blur-2xl transition focus-within:border-primary/40 focus-within:shadow-[0_0_0_4px_rgba(16,185,129,0.08)]">
+      {/* Container Principal do Input */}
+      <div 
+        className={cn(
+          "relative flex flex-1 items-end gap-3 rounded-[2rem] border border-border/60 bg-card/60 px-5 py-3 shadow-2xl backdrop-blur-3xl transition-all duration-300",
+          "focus-within:border-primary/50 focus-within:bg-card/80 focus-within:shadow-[0_0_25px_rgba(16,185,129,0.12)]",
+          localPending && "opacity-80 grayscale-[0.5]"
+        )}
+      >
+        {/* Ícone sutil de indicação */}
+        <div className="mb-2 hidden sm:block">
+          <Sparkles className={cn(
+            "h-5 w-5 transition-colors duration-500",
+            localPending ? "text-primary animate-pulse" : "text-muted-foreground/30"
+          )} />
+        </div>
+
         <ChatTextarea
           name="content"
-          placeholder={`Mensagem para ${agentName}...`}
+          placeholder={`Conversar com ${agentName}...`}
           required
           rows={1}
-          className="max-h-40 min-h-[24px] flex-1 resize-none bg-transparent px-1 py-1 text-sm text-foreground outline-none placeholder:text-muted-foreground"
+          className={cn(
+            "max-h-40 min-h-[28px] flex-1 resize-none bg-transparent px-1 py-1 text-base leading-relaxed text-foreground outline-none transition-all placeholder:text-muted-foreground/60",
+            "scrollbar-none" // Se tiver um helper de utilitário para esconder scroll
+          )}
           onEnterSubmit={submitCurrentForm}
         />
 
-        <ChatSubmitButton />
+        {/* Botão de Enviar (Já deve estar estilizado como discutimos anteriormente) */}
+        <div className="mb-0.5">
+          <ChatSubmitButton />
+        </div>
       </div>
     </form>
   );

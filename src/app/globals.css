@@ -3,59 +3,63 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: oklch(0.985 0 0);
-  --foreground: oklch(0.18 0 0);
+  /* Fundo e Texto: Tons levemente mais suaves para reduzir fadiga visual */
+  --background: oklch(0.99 0.005 0); 
+  --foreground: oklch(0.25 0.01 0);
 
-  --card: oklch(1 0 0 / 0.82);
-  --card-foreground: oklch(0.2 0 0);
+  /* Cards e Popovers: Bordas sutis e profundidade com opacidade */
+  --card: oklch(1 0 0 / 0.8);
+  --card-foreground: oklch(0.25 0.01 0);
+  --popover: oklch(1 0 0 / 0.95);
+  --popover-foreground: oklch(0.25 0.01 0);
 
-  --popover: oklch(1 0 0 / 0.92);
-  --popover-foreground: oklch(0.2 0 0);
+  /* Primary: Verde Esmeralda Profissional (Pandora) */
+  --primary: oklch(0.65 0.14 162);
+  --primary-foreground: oklch(0.99 0 0);
 
-  --primary: oklch(0.72 0.16 162);
-  --primary-foreground: oklch(0.985 0 0);
+  /* Tons de Cinza Corporativos */
+  --secondary: oklch(0.96 0.005 0);
+  --secondary-foreground: oklch(0.3 0.01 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.45 0.01 0);
+  --accent: oklch(0.94 0.02 162); /* Leve toque da cor primária no accent */
+  --accent-foreground: oklch(0.25 0.01 0);
 
-  --secondary: oklch(0.95 0 0);
-  --secondary-foreground: oklch(0.22 0 0);
+  /* Borders e Inputs: Definição clara mas discreta */
+  --border: oklch(0.92 0.005 0);
+  --input: oklch(0.92 0.005 0);
+  --ring: oklch(0.65 0.14 162);
 
-  --muted: oklch(0.96 0 0);
-  --muted-foreground: oklch(0.48 0 0);
-
-  --accent: oklch(0.94 0.01 162);
-  --accent-foreground: oklch(0.22 0 0);
-
-  --border: oklch(0.9 0 0);
-  --input: oklch(0.9 0 0);
-  --ring: oklch(0.72 0.16 162);
-
-  --radius: 1rem;
+  /* Estética Moderna: Bordas levemente menos arredondadas (SaaS Look) */
+  --radius: 0.75rem;
 }
 
 .dark {
-  --background: oklch(0.15 0.01 260);
-  --foreground: oklch(0.96 0 0);
+  /* Fundo Dark: Azul Petróleo Profundo em vez de preto puro */
+  --background: oklch(0.18 0.015 260);
+  --foreground: oklch(0.98 0.005 0);
 
-  --card: oklch(0.2 0.01 260 / 0.72);
-  --card-foreground: oklch(0.96 0 0);
+  /* Superfícies Elevadas no Dark */
+  --card: oklch(0.22 0.02 260 / 0.6);
+  --card-foreground: oklch(0.98 0.005 0);
+  --popover: oklch(0.2 0.02 260 / 0.9);
+  --popover-foreground: oklch(0.98 0.005 0);
 
-  --popover: oklch(0.18 0.01 260 / 0.88);
-  --popover-foreground: oklch(0.96 0 0);
+  /* Primary mantém a consistência da marca */
+  --primary: oklch(0.7 0.14 162);
+  --primary-foreground: oklch(0.1 0 0);
 
-  --primary: oklch(0.72 0.16 162);
-  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.25 0.02 260);
+  --secondary-foreground: oklch(0.98 0.005 0);
+  --muted: oklch(0.25 0.02 260);
+  --muted-foreground: oklch(0.65 0.01 0);
+  --accent: oklch(0.28 0.03 162 / 0.2);
+  --accent-foreground: oklch(0.98 0.005 0);
 
-  --secondary: oklch(0.24 0.01 260);
-  --secondary-foreground: oklch(0.96 0 0);
-
-  --muted: oklch(0.24 0.01 260);
-  --muted-foreground: oklch(0.72 0 0);
-
-  --accent: oklch(0.28 0.01 260);
-  --accent-foreground: oklch(0.96 0 0);
-
-  --border: oklch(0.3 0.01 260);
-  --input: oklch(0.3 0.01 260);
-  --ring: oklch(0.72 0.16 162);
+  /* Bordas mais visíveis no dark para separação de componentes */
+  --border: oklch(0.32 0.02 260);
+  --input: oklch(0.32 0.02 260);
+  --ring: oklch(0.7 0.14 162);
 }
 
 * {
@@ -65,12 +69,35 @@
 html,
 body {
   height: 100%;
+  scroll-behavior: smooth;
 }
 
 body {
+  /* Gradiente radial sutil para profundidade visual (toque moderno) */
   background:
-    radial-gradient(circle at top, color-mix(in oklab, var(--primary) 8%, transparent), transparent 35%),
+    radial-gradient(circle at top right, color-mix(in oklab, var(--primary) 5%, transparent), transparent 40%),
+    radial-gradient(circle at bottom left, color-mix(in oklab, var(--primary) 3%, transparent), transparent 30%),
     var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans), sans-serif;
+  font-family: var(--font-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom Scrollbar para estética corporativa */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
 }
