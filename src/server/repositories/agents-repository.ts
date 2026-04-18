@@ -102,6 +102,21 @@ export async function getActiveAgents(
   });
 }
 
+export async function getAllAgents(): Promise<Agent[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("agents")
+    .select("*")
+    .order("nome", { ascending: true });
+
+  if (error) {
+    throw new Error("Erro ao buscar agentes.");
+  }
+
+  return (data ?? []) as Agent[];
+}
+
 export async function getAgentBySlug(slug: string): Promise<Agent | null> {
   const supabase = await createClient();
 

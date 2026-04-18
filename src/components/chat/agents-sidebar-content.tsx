@@ -21,9 +21,15 @@ export function AgentsSidebarContent({
         <h1 className="text-xl font-semibold tracking-tight text-foreground">
           Pandora
         </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className="mt-1 mb-3 text-sm text-muted-foreground">
           Seus agentes disponíveis
         </p>
+      <Link
+        href="/agentes"
+        className="rounded-xl border border-border bg-card/80 px-2 py-2 text-sm font-medium text-foreground shadow-sm backdrop-blur transition hover:bg-accent"
+      >
+        Configurar Agentes
+      </Link>
       </div>
 
       <div className="flex flex-col">
