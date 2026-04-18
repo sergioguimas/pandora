@@ -75,8 +75,8 @@ export default async function ChatAgentPage({
                   key={message.id}
                   className={
                     message.role === "user"
-                      ? "self-end rounded-2xl rounded-br-md bg-emerald-600 px-4 py-3 text-sm text-white"
-                      : "self-start rounded-2xl rounded-bl-md bg-zinc-800 px-4 py-3 text-sm text-zinc-100"
+                      ? "max-w-[80%] self-end rounded-2xl rounded-br-md bg-emerald-600 px-4 py-3 text-sm break-words text-white"
+                      : "max-w-[80%] self-start rounded-2xl rounded-bl-md bg-zinc-800 px-4 py-3 text-sm break-words text-zinc-100"
                   }
                 >
                   {message.content}

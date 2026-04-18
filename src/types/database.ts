@@ -26,3 +26,21 @@ export type Message = {
   metadata: Record<string, unknown> | null;
   created_at: string;
 };
+
+export type ConversationWithAgent = {
+  id: string;
+  user_id: string;
+  agent_id: string;
+  agents:
+    | {
+        id: string;
+        slug: string;
+        nome: string;
+      }
+    | {
+        id: string;
+        slug: string;
+        nome: string;
+      }[]
+    | null;
+};
