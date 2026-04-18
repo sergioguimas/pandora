@@ -1,28 +1,25 @@
 "use client";
 
-import { Loader2, SendHorizonal } from "lucide-react";
-import { useFormStatus } from "react-dom";
+import { cn } from "@/lib/utils";
+import { ArrowUp } from "lucide-react";
 
-export function ChatSubmitButton() {
-  const { pending } = useFormStatus();
+type ChatSubmitButtonProps = {
+  disabled?: boolean;
+};
 
+export function ChatSubmitButton({
+  disabled = false,
+}: ChatSubmitButtonProps) {
   return (
     <button
       type="submit"
-      disabled={pending}
-      className="inline-flex min-w-[108px] items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-[0_8px_24px_rgba(16,185,129,0.18)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70"
-    >
-      {pending ? (
-        <>
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Enviando
-        </>
-      ) : (
-        <>
-          <SendHorizonal className="h-4 w-4" />
-          Enviar
-        </>
+      disabled={disabled}
+      className={cn(
+        "flex h-11 w-11 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-all duration-200",
+        "hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
       )}
+    >
+      <ArrowUp className="h-4 w-4" />
     </button>
   );
 }
