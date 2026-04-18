@@ -2,15 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { generateMockAgentResponse } from "@/server/services/mock-agent-response";
+import { getConversationWithAgent } from "@/server/repositories/conversations-repository";
+import { getRecentMessagesByConversationId } from "@/server/repositories/messages-repository";
+import { generateAgentResponse } from "@/server/services/ai/generate-agent-response";
 
 type SendMessageState = {
   ok: boolean;
 };
-
-function wait(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 export async function sendMessage(
   _prevState: SendMessageState,
@@ -45,30 +43,7 @@ export async function sendMessage(
     throw new Error("Erro ao enviar mensagem do usuário.");
   }
 
-  revalidatePath(redirectPath);
-
-  await wait(700);
-
-  const { data: conversation, error: conversationError } = await supabase
-    .from("conversations")
-    .select(`
-      id,
-      user_id,
-      agent_id,
-      agents (
-        id,
-        slug,
-        nome
-      )
-    `)
-    .eq("id", conversationId)
-    .eq("user_id", user.id)
-    .single();
-
-  if (conversationError || !conversation) {
-    throw new Error("Erro ao localizar a conversa.");
-  }
-
+  const conversation = await getConversationWithAgent(conversationId, user.id);
   const agent = Array.isArray(conversation.agents)
     ? conversation.agents[0]
     : conversation.agents;
@@ -77,10 +52,24 @@ export async function sendMessage(
     throw new Error("Agente da conversa não encontrado.");
   }
 
-  const mockResponse = generateMockAgentResponse({
+  const recentMessages = await getRecentMessagesByConversationId(
+    conversationId,
+    agent.max_history_messages
+  );
+
+  const result = await generateAgentResponse({
+    provider: agent.provider,
+    model: agent.model,
+    temperature: agent.temperature,
+    maxHistoryMessages: agent.max_history_messages,
     agentName: agent.nome,
-    agentSlug: agent.slug,
-    userMessage: content,
+    agentDescription: agent.descricao ?? null,
+    agentPromptBase: agent.prompt_base,
+    latestUserMessage: content,
+    history: recentMessages.map((message) => ({
+      role: message.role,
+      content: message.content,
+    })),
   });
 
   const { error: insertAssistantMessageError } = await supabase
@@ -88,9 +77,11 @@ export async function sendMessage(
     .insert({
       conversation_id: conversationId,
       role: "assistant",
-      content: mockResponse,
+      content: result.text,
       metadata: {
-        source: "mock",
+        source: result.provider,
+        model: result.model,
+        temperature: agent.temperature,
       },
     });
 

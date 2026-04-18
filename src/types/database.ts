@@ -6,7 +6,17 @@ export type Agent = {
   avatar_url: string | null;
   prompt_base: string;
   ativo: boolean;
+  provider: "gemini" | "openai";
+  model: string;
+  temperature: number;
+  max_history_messages: number;
   created_at: string;
+  updated_at: string;
+};
+
+export type AgentListItem = Agent & {
+  last_message_preview?: string | null;
+  last_message_at?: string | null;
 };
 
 export type Conversation = {
@@ -27,25 +37,29 @@ export type Message = {
   created_at: string;
 };
 
-export type ConversationWithAgent = {
-  id: string;
-  user_id: string;
-  agent_id: string;
+export type ConversationWithAgent = Conversation & {
   agents:
     | {
         id: string;
         slug: string;
         nome: string;
+        descricao: string | null;
+        prompt_base: string;
+        provider: "gemini" | "openai";
+        model: string;
+        temperature: number;
+        max_history_messages: number;
       }
     | {
         id: string;
         slug: string;
         nome: string;
+        descricao: string | null;
+        prompt_base: string;
+        provider: "gemini" | "openai";
+        model: string;
+        temperature: number;
+        max_history_messages: number;
       }[]
     | null;
-};
-
-export type AgentListItem = Agent & {
-  last_message_preview?: string | null;
-  last_message_at?: string | null;
 };

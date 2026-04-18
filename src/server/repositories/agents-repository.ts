@@ -1,10 +1,24 @@
 import { createClient } from "@/lib/supabase/server";
 import type { Agent, AgentListItem } from "@/types/database";
 
-export async function getActiveAgents(userId?: string): Promise<AgentListItem[]> {
+type ConversationRow = {
+  id: string;
+  agent_id: string;
+  updated_at: string;
+};
+
+type MessagePreviewRow = {
+  conversation_id: string;
+  content: string | null;
+  created_at: string;
+};
+
+export async function getActiveAgents(
+  userId?: string
+): Promise<AgentListItem[]> {
   const supabase = await createClient();
 
-  const { data: agents, error } = await supabase
+  const { data, error } = await supabase
     .from("agents")
     .select("*")
     .eq("ativo", true)
@@ -14,47 +28,57 @@ export async function getActiveAgents(userId?: string): Promise<AgentListItem[]>
     throw new Error("Erro ao buscar agentes.");
   }
 
-  const typedAgents = (agents ?? []) as Agent[];
+  const agents = ((data ?? []) as Agent[]).map((agent) => ({
+    ...agent,
+    last_message_preview: null,
+    last_message_at: null,
+  })) satisfies AgentListItem[];
 
-  if (!userId || typedAgents.length === 0) {
-    return typedAgents;
+  if (!userId || agents.length === 0) {
+    return agents;
   }
 
-  const agentIds = typedAgents.map((agent) => agent.id);
+  const agentIds = agents.map((agent) => agent.id);
 
-  const { data: conversations } = await supabase
+  const { data: conversationsData, error: conversationsError } = await supabase
     .from("conversations")
     .select("id, agent_id, updated_at")
     .eq("user_id", userId)
     .in("agent_id", agentIds);
 
-  const conversationMap = new Map<
-    string,
-    { id: string; updated_at: string }
-  >();
-
-  for (const conversation of conversations ?? []) {
-    conversationMap.set(conversation.agent_id, {
-      id: conversation.id,
-      updated_at: conversation.updated_at,
-    });
+  if (conversationsError) {
+    throw new Error("Erro ao buscar conversas dos agentes.");
   }
 
-  const conversationIds = [...conversationMap.values()].map((item) => item.id);
+  const conversations = (conversationsData ?? []) as ConversationRow[];
 
-  let latestMessagesMap = new Map<
+  const conversationMap = new Map<string, ConversationRow>();
+
+  for (const conversation of conversations) {
+    conversationMap.set(conversation.agent_id, conversation);
+  }
+
+  const conversationIds = conversations.map((conversation) => conversation.id);
+
+  const latestMessagesMap = new Map<
     string,
     { content: string | null; created_at: string }
   >();
 
   if (conversationIds.length > 0) {
-    const { data: messages } = await supabase
+    const { data: messagesData, error: messagesError } = await supabase
       .from("messages")
       .select("conversation_id, content, created_at")
       .in("conversation_id", conversationIds)
       .order("created_at", { ascending: false });
 
-    for (const message of messages ?? []) {
+    if (messagesError) {
+      throw new Error("Erro ao buscar últimas mensagens dos agentes.");
+    }
+
+    const messages = (messagesData ?? []) as MessagePreviewRow[];
+
+    for (const message of messages) {
       if (!latestMessagesMap.has(message.conversation_id)) {
         latestMessagesMap.set(message.conversation_id, {
           content: message.content,
@@ -64,7 +88,7 @@ export async function getActiveAgents(userId?: string): Promise<AgentListItem[]>
     }
   }
 
-  return typedAgents.map((agent) => {
+  return agents.map((agent) => {
     const conversation = conversationMap.get(agent.id);
     const latestMessage = conversation
       ? latestMessagesMap.get(conversation.id)
