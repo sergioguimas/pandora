@@ -16,3 +16,20 @@ export async function getActiveAgents(): Promise<Agent[]> {
 
   return (data ?? []) as Agent[];
 }
+
+export async function getAgentBySlug(slug: string): Promise<Agent | null> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("agents")
+    .select("*")
+    .eq("slug", slug)
+    .eq("ativo", true)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error("Erro ao buscar agente.");
+  }
+
+  return (data as Agent | null) ?? null;
+}
