@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { AgentsPage } from "@/components/agents/agents-page";
 import { getAllAgents } from "@/server/repositories/agents-repository";
 import { listUserConversationsByAgent } from "@/server/repositories/conversations-repository";
+import { listKnowledgeDocumentsByAgent } from "@/server/repositories/knowledge-repository";
 import { createClient } from "@/lib/supabase/server";
 
 type AgentesPageRouteProps = {
@@ -22,6 +23,7 @@ export default async function AgentesPageRoute({
         agents={[]}
         selectedAgent={null}
         conversations={[]}
+        knowledgeDocuments={[]}
       />
     );
   }
@@ -44,11 +46,16 @@ export default async function AgentesPageRoute({
       ? await listUserConversationsByAgent(user.id, selectedAgent.id)
       : [];
 
+  const knowledgeDocuments = selectedAgent
+    ? await listKnowledgeDocumentsByAgent(selectedAgent.id)
+    : [];
+
   return (
     <AgentsPage
       agents={agents}
       selectedAgent={selectedAgent}
       conversations={conversations}
+      knowledgeDocuments={knowledgeDocuments}
     />
   );
 }

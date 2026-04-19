@@ -6,8 +6,10 @@ import { AgentsSidebar } from "@/components/agents/agents-sidebar";
 import { CreateAgentButton } from "@/components/agents/create-agent-button";
 import { AgentEditorPanel } from "@/components/agents/agent-editor-panel";
 import { KnowledgeIngestForm } from "@/components/agents/knowledge-ingest-form";
+import { KnowledgeDocumentsList } from "@/components/agents/knowledge-documents-list";
 import { ChevronLeft, LayoutGrid, Settings2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { KnowledgeDocumentListItem } from "@/server/repositories/knowledge-repository";
 
 type ConversationOption = {
   id: string;
@@ -18,12 +20,14 @@ type AgentsPageProps = {
   agents: Agent[];
   selectedAgent: Agent | null;
   conversations: ConversationOption[];
+  knowledgeDocuments: KnowledgeDocumentListItem[];
 };
 
 export function AgentsPage({
   agents,
   selectedAgent,
   conversations,
+  knowledgeDocuments,
 }: AgentsPageProps) {
   return (
     <main className="flex h-screen overflow-hidden bg-background">
@@ -81,6 +85,8 @@ export function AgentsPage({
                 agentName={selectedAgent.nome}
                 conversations={conversations}
               />
+
+              <KnowledgeDocumentsList documents={knowledgeDocuments} />
             </div>
           ) : (
             <div className="flex h-full flex-col items-center justify-center px-6 text-center animate-in fade-in zoom-in-95 duration-700">

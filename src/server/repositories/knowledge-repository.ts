@@ -1,6 +1,121 @@
 import { createClient } from "@/lib/supabase/server";
 
 type KnowledgeScope = "global" | "conversation";
+type KnowledgeStatus = "pending" | "processing" | "ready" | "error";
+
+export type KnowledgeDocumentListItem = {
+  id: string;
+  agent_id: string;
+  conversation_id: string | null;
+  scope: KnowledgeScope;
+  titulo: string;
+  fonte: string | null;
+  mime_type: string | null;
+  status: KnowledgeStatus;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+  conversation_title?: string | null;
+  preview_content?: string | null;
+  chunks_count?: number;
+};
+
+type KnowledgeChunkPreviewRow = {
+  document_id: string;
+  content: string;
+};
+
+type KnowledgeChunkCountRow = {
+  document_id: string;
+};
+
+export async function listKnowledgeDocumentsByAgent(
+  agentId: string
+): Promise<KnowledgeDocumentListItem[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("knowledge_documents")
+    .select(`
+      id,
+      agent_id,
+      conversation_id,
+      scope,
+      titulo,
+      fonte,
+      mime_type,
+      status,
+      metadata,
+      created_at,
+      updated_at,
+      conversations (
+        titulo
+      )
+    `)
+    .eq("agent_id", agentId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw new Error("Erro ao listar conhecimentos.");
+  }
+
+  const documents = (data ?? []).map((row: any) => ({
+    id: row.id,
+    agent_id: row.agent_id,
+    conversation_id: row.conversation_id,
+    scope: row.scope,
+    titulo: row.titulo,
+    fonte: row.fonte,
+    mime_type: row.mime_type,
+    status: row.status,
+    metadata: normalizeMetadata(row.metadata),
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    conversation_title: Array.isArray(row.conversations)
+      ? row.conversations[0]?.titulo ?? null
+      : row.conversations?.titulo ?? null,
+    preview_content: null,
+    chunks_count: 0,
+  })) as KnowledgeDocumentListItem[];
+
+  if (documents.length === 0) {
+    return documents;
+  }
+
+  const documentIds = documents.map((document) => document.id);
+
+  const { data: chunksData, error: chunksError } = await supabase
+    .from("knowledge_chunks")
+    .select("document_id, content, chunk_index")
+    .in("document_id", documentIds)
+    .order("chunk_index", { ascending: true });
+
+  if (chunksError) {
+    throw new Error("Erro ao buscar preview dos conhecimentos.");
+  }
+
+  const firstChunkMap = new Map<string, string>();
+  const chunkCountMap = new Map<string, number>();
+
+  for (const row of (chunksData ?? []) as Array<
+    KnowledgeChunkPreviewRow & { chunk_index: number }
+  >) {
+    if (!firstChunkMap.has(row.document_id)) {
+      firstChunkMap.set(row.document_id, row.content);
+    }
+
+    chunkCountMap.set(
+      row.document_id,
+      (chunkCountMap.get(row.document_id) ?? 0) + 1
+    );
+  }
+
+  return documents.map((document) => ({
+    ...document,
+    preview_content: firstChunkMap.get(document.id) ?? null,
+    chunks_count: chunkCountMap.get(document.id) ?? 0,
+  }));
+}
 
 type MatchKnowledgeRow = {
   id: string;
@@ -23,6 +138,7 @@ function normalizeMetadata(
 
   return value as Record<string, unknown>;
 }
+
 
 export async function createKnowledgeDocument(params: {
   agentId: string;
@@ -152,4 +268,17 @@ export async function matchKnowledge(params: {
     ...row,
     metadata: normalizeMetadata(row.metadata),
   }));
+}
+
+export async function deleteKnowledgeDocument(documentId: string) {
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from("knowledge_documents")
+    .delete()
+    .eq("id", documentId);
+
+  if (error) {
+    throw new Error("Erro ao excluir conhecimento.");
+  }
 }
