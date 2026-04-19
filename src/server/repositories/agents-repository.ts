@@ -32,6 +32,8 @@ export async function getActiveAgents(
     ...agent,
     last_message_preview: null,
     last_message_at: null,
+    last_conversation_title: null,
+    last_conversation_id: null,
   })) satisfies AgentListItem[];
 
   if (!userId || agents.length === 0) {
@@ -42,23 +44,41 @@ export async function getActiveAgents(
 
   const { data: conversationsData, error: conversationsError } = await supabase
     .from("conversations")
-    .select("id, agent_id, updated_at")
+    .select("id, agent_id, titulo, updated_at")
     .eq("user_id", userId)
-    .in("agent_id", agentIds);
+    .in("agent_id", agentIds)
+    .order("updated_at", { ascending: false });
 
   if (conversationsError) {
-    throw new Error("Erro ao buscar conversas dos agentes.");
+    throw new Error("Erro ao buscar conversas.");
   }
 
-  const conversations = (conversationsData ?? []) as ConversationRow[];
+  const conversations = (conversationsData ?? []) as Array<{
+    id: string;
+    agent_id: string;
+    titulo: string | null;
+    updated_at: string;
+  }>;
 
-  const conversationMap = new Map<string, ConversationRow>();
+  // 🔥 pegar a conversa mais recente por agente
+  const latestConversationMap = new Map<
+    string,
+    {
+      id: string;
+      titulo: string | null;
+    }
+  >();
 
-  for (const conversation of conversations) {
-    conversationMap.set(conversation.agent_id, conversation);
+  for (const conv of conversations) {
+    if (!latestConversationMap.has(conv.agent_id)) {
+      latestConversationMap.set(conv.agent_id, {
+        id: conv.id,
+        titulo: conv.titulo,
+      });
+    }
   }
 
-  const conversationIds = conversations.map((conversation) => conversation.id);
+  const conversationIds = conversations.map((c) => c.id);
 
   const latestMessagesMap = new Map<
     string,
@@ -73,7 +93,7 @@ export async function getActiveAgents(
       .order("created_at", { ascending: false });
 
     if (messagesError) {
-      throw new Error("Erro ao buscar últimas mensagens dos agentes.");
+      throw new Error("Erro ao buscar mensagens.");
     }
 
     const messages = (messagesData ?? []) as MessagePreviewRow[];
@@ -89,15 +109,18 @@ export async function getActiveAgents(
   }
 
   return agents.map((agent) => {
-    const conversation = conversationMap.get(agent.id);
-    const latestMessage = conversation
-      ? latestMessagesMap.get(conversation.id)
+    const latestConversation = latestConversationMap.get(agent.id);
+
+    const latestMessage = latestConversation
+      ? latestMessagesMap.get(latestConversation.id)
       : null;
 
     return {
       ...agent,
       last_message_preview: latestMessage?.content ?? null,
       last_message_at: latestMessage?.created_at ?? null,
+      last_conversation_title: latestConversation?.titulo ?? null,
+      last_conversation_id: latestConversation?.id ?? null,
     };
   });
 }

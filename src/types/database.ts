@@ -17,6 +17,8 @@ export type Agent = {
 export type AgentListItem = Agent & {
   last_message_preview?: string | null;
   last_message_at?: string | null;
+  last_conversation_title?: string | null;
+  last_conversation_id?: string | null;
 };
 
 export type Conversation = {

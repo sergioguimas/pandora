@@ -2,9 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { getConversationWithAgent } from "@/server/repositories/conversations-repository";
+import { getConversationWithAgent, createConversationForAgent, updateConversationTitle } from "@/server/repositories/conversations-repository";
 import { getRecentMessagesByConversationId } from "@/server/repositories/messages-repository";
 import { generateAgentResponse } from "@/server/services/ai/generate-agent-response";
+import { redirect } from "next/navigation";
 
 type SendMessageState = {
   ok: boolean;
@@ -92,4 +93,66 @@ export async function sendMessage(
   revalidatePath(redirectPath);
 
   return { ok: true };
+}
+
+export async function createConversationAction(formData: FormData) {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    throw new Error("Usuário não autenticado.");
+  }
+
+  const agentSlug = String(formData.get("agentSlug") ?? "").trim();
+  const title = String(formData.get("title") ?? "").trim();
+
+  if (!agentSlug) {
+    throw new Error("Agente não informado.");
+  }
+
+  const conversation = await createConversationForAgent(
+    user.id,
+    agentSlug,
+    title || null
+  );
+
+  redirect(`/chat/${agentSlug}?conversation=${conversation.id}`);
+}
+
+export async function renameConversationAction(formData: FormData) {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    throw new Error("Usuário não autenticado.");
+  }
+
+  const conversationId = String(formData.get("conversationId") ?? "").trim();
+  const agentSlug = String(formData.get("agentSlug") ?? "").trim();
+  const title = String(formData.get("title") ?? "").trim();
+
+  if (!conversationId) {
+    throw new Error("Conversa não informada.");
+  }
+
+  if (!agentSlug) {
+    throw new Error("Agente não informado.");
+  }
+
+  if (!title) {
+    throw new Error("Informe um nome para a conversa.");
+  }
+
+  await updateConversationTitle(conversationId, user.id, title);
+
+  revalidatePath(`/chat/${agentSlug}`);
+  revalidatePath("/chat");
 }

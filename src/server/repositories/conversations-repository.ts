@@ -7,9 +7,10 @@ type AgentLookupRow = {
   slug: string;
 };
 
-export async function getOrCreateConversationByAgentSlug(
+export async function createConversationForAgent(
   userId: string,
-  agentSlug: string
+  agentSlug: string,
+  title?: string | null
 ): Promise<Conversation> {
   const supabase = await createClient();
 
@@ -26,27 +27,12 @@ export async function getOrCreateConversationByAgentSlug(
 
   const agent = agentData as AgentLookupRow;
 
-  const { data: existingConversationData, error: existingError } = await supabase
-    .from("conversations")
-    .select("*")
-    .eq("user_id", userId)
-    .eq("agent_id", agent.id)
-    .maybeSingle();
-
-  if (existingError) {
-    throw new Error("Erro ao buscar conversa.");
-  }
-
-  if (existingConversationData) {
-    return existingConversationData as Conversation;
-  }
-
   const { data: createdConversationData, error: createError } = await supabase
     .from("conversations")
     .insert({
       user_id: userId,
       agent_id: agent.id,
-      titulo: agent.nome,
+      titulo: title?.trim() || `Nova conversa - ${agent.nome}`,
     })
     .select("*")
     .single();
@@ -56,6 +42,30 @@ export async function getOrCreateConversationByAgentSlug(
   }
 
   return createdConversationData as Conversation;
+}
+
+export async function listUserConversationsByAgent(
+  userId: string,
+  agentId: string
+): Promise<Array<{ id: string; titulo: string | null; updated_at: string }>> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("conversations")
+    .select("id, titulo, updated_at")
+    .eq("user_id", userId)
+    .eq("agent_id", agentId)
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    throw new Error("Erro ao buscar conversas do agente.");
+  }
+
+  return (data ?? []) as Array<{
+    id: string;
+    titulo: string | null;
+    updated_at: string;
+  }>;
 }
 
 export async function getConversationWithAgent(
@@ -96,22 +106,23 @@ export async function getConversationWithAgent(
   return data as ConversationWithAgent;
 }
 
-export async function listUserConversationsByAgent(
+export async function updateConversationTitle(
+  conversationId: string,
   userId: string,
-  agentId: string
-): Promise<Array<{ id: string; titulo: string | null }>> {
+  title: string
+): Promise<void> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from("conversations")
-    .select("id, titulo")
-    .eq("user_id", userId)
-    .eq("agent_id", agentId)
-    .order("updated_at", { ascending: false });
+    .update({
+      titulo: title.trim(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", conversationId)
+    .eq("user_id", userId);
 
   if (error) {
-    throw new Error("Erro ao buscar conversas do agente.");
+    throw new Error("Erro ao renomear conversa.");
   }
-
-  return (data ?? []) as Array<{ id: string; titulo: string | null }>;
 }
