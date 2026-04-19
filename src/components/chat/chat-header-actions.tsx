@@ -9,19 +9,6 @@ import { cn } from "@/lib/utils";
 export function ChatHeaderActions() {
   return (
     <div className="flex items-center gap-3">
-      {/* Link para Gestão de Agentes - Estilo Ghost com Ícone */}
-      <Link
-        href="/agentes"
-        className={cn(
-          "group flex items-center gap-2 rounded-xl border border-border/40 bg-card/40 px-4 py-2",
-          "text-sm font-bold text-muted-foreground backdrop-blur-md transition-all",
-          "hover:bg-accent hover:text-foreground hover:border-border active:scale-95 shadow-sm"
-        )}
-      >
-        <Settings className="h-4 w-4 transition-transform group-hover:rotate-45" />
-        <span className="hidden sm:inline">Gerenciar Agentes</span>
-      </Link>
-
       <div className="h-6 w-[1px] bg-border/60 mx-1" /> {/* Divisor Vertical */}
 
       {/* Toggle de Tema */}

@@ -63,3 +63,25 @@ export type ConversationWithAgent = Conversation & {
       }[]
     | null;
 };
+
+export type KnowledgeDocument = {
+  id: string;
+  agent_id: string;
+  titulo: string;
+  fonte: string | null;
+  mime_type: string | null;
+  status: "pending" | "processing" | "ready" | "error";
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type KnowledgeChunk = {
+  id: string;
+  document_id: string;
+  agent_id: string;
+  chunk_index: number;
+  content: string;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+};

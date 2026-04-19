@@ -95,3 +95,23 @@ export async function getConversationWithAgent(
 
   return data as ConversationWithAgent;
 }
+
+export async function listUserConversationsByAgent(
+  userId: string,
+  agentId: string
+): Promise<Array<{ id: string; titulo: string | null }>> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("conversations")
+    .select("id, titulo")
+    .eq("user_id", userId)
+    .eq("agent_id", agentId)
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    throw new Error("Erro ao buscar conversas do agente.");
+  }
+
+  return (data ?? []) as Array<{ id: string; titulo: string | null }>;
+}

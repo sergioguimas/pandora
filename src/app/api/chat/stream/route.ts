@@ -4,13 +4,27 @@ import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@/lib/supabase/server";
 import { getConversationWithAgent } from "@/server/repositories/conversations-repository";
 import { getRecentMessagesByConversationId } from "@/server/repositories/messages-repository";
-import type { Agent, Message } from "@/types/database";
+import { matchKnowledge } from "@/server/repositories/knowledge-repository";
+import { generateQueryEmbedding } from "@/server/services/ai/providers/gemini-embeddings";
+import type { Message } from "@/types/database";
 
 export const runtime = "nodejs";
 
 type StreamRequestBody = {
   conversationId: string;
   content: string;
+};
+
+type RuntimeAgent = {
+  id: string;
+  slug: string;
+  nome: string;
+  descricao: string | null;
+  prompt_base: string;
+  provider: "gemini" | "openai";
+  model: string;
+  temperature: number;
+  max_history_messages: number;
 };
 
 type GeminiContent = {
@@ -24,7 +38,7 @@ function sse(data: unknown) {
 
 function getAgentFromConversation(
   value: Awaited<ReturnType<typeof getConversationWithAgent>>["agents"]
-): Agent {
+): RuntimeAgent {
   if (!value) {
     throw new Error("Agente da conversa não encontrado.");
   }
@@ -36,32 +50,16 @@ function getAgentFromConversation(
   }
 
   return {
-    ...agent,
-    avatar_url: null,
-    ativo: true,
-    created_at: "",
-    updated_at: "",
+    id: agent.id,
+    slug: agent.slug,
+    nome: agent.nome,
+    descricao: agent.descricao,
+    prompt_base: agent.prompt_base,
+    provider: agent.provider,
+    model: agent.model,
+    temperature: agent.temperature,
+    max_history_messages: agent.max_history_messages,
   };
-}
-
-function buildSystemInstruction(agent: Agent, knowledge?: string) {
-  return [
-    `Você é o agente "${agent.nome}".`,
-    agent.descricao ? `Descrição: ${agent.descricao}` : null,
-    "",
-    "Siga rigorosamente o prompt base abaixo:",
-    agent.prompt_base,
-    knowledge?.trim()
-      ? ["", "Base de conhecimento recuperada:", knowledge].join("\n")
-      : null,
-    "",
-    "Regras:",
-    "- Responda de forma clara, útil e objetiva.",
-    "- Se faltar contexto, diga isso explicitamente.",
-    "- Não invente informações.",
-  ]
-    .filter(Boolean)
-    .join("\n");
 }
 
 function mapMessagesToGemini(messages: Message[]): GeminiContent[] {
@@ -77,12 +75,57 @@ function mapMessagesToGemini(messages: Message[]): GeminiContent[] {
     }));
 }
 
+function extractChunkText(chunk: unknown): string {
+  if (!chunk || typeof chunk !== "object") return "";
+
+  const value = chunk as {
+    text?: string;
+    candidates?: Array<{
+      content?: {
+        parts?: Array<{
+          text?: string;
+        }>;
+      };
+    }>;
+  };
+
+  return value.text ?? value.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+}
+
+function buildSystemInstruction(
+  agent: RuntimeAgent,
+  knowledge: string
+): string {
+  return [
+    `Você é o agente "${agent.nome}".`,
+    agent.descricao ? `Descrição: ${agent.descricao}` : null,
+    "",
+    "Siga rigorosamente o prompt base abaixo:",
+    agent.prompt_base,
+    knowledge.trim()
+      ? [
+          "",
+          "INFORMAÇÕES IMPORTANTES (use como base da resposta):",
+          knowledge,
+        ].join("\n")
+      : null,
+    "",
+    "Regras:",
+    "- Priorize as informações fornecidas no contexto.",
+    "- Não invente dados.",
+    "- Se faltar contexto suficiente, diga isso claramente.",
+    "- Responda em português do Brasil.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 async function saveMessage(params: {
   conversationId: string;
   role: "user" | "assistant" | "system";
   content: string;
   metadata?: Record<string, unknown> | null;
-}) {
+}): Promise<Message> {
   const supabase = await createClient();
 
   const { data, error } = await supabase
@@ -103,10 +146,44 @@ async function saveMessage(params: {
   return data as Message;
 }
 
-async function retrieveKnowledge(_agentId: string, _query: string) {
-  // Placeholder da RAG/base de conhecimento.
-  // Pode retornar string vazia por enquanto.
-  return "";
+async function retrieveKnowledge(params: {
+  agentId: string;
+  conversationId: string;
+  query: string;
+}): Promise<string> {
+  const embedding = await generateQueryEmbedding(params.query);
+
+  const matches = await matchKnowledge({
+    agentId: params.agentId,
+    conversationId: params.conversationId,
+    embedding,
+    threshold: 0.45,
+    count: 6,
+  });
+
+  if (!matches.length) {
+    return "";
+  }
+
+  const globalChunks = matches.filter((item) => item.scope === "global");
+  const conversationChunks = matches.filter(
+    (item) => item.scope === "conversation"
+  );
+
+  return [
+    globalChunks.length
+      ? `BASE DE CONHECIMENTO DO AGENTE:\n\n${globalChunks
+          .map((item) => item.content)
+          .join("\n\n---\n\n")}`
+      : null,
+    conversationChunks.length
+      ? `CONTEXTO ESPECÍFICO DESTA CONVERSA:\n\n${conversationChunks
+          .map((item) => item.content)
+          .join("\n\n---\n\n")}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join("\n\n====================\n\n");
 }
 
 export async function POST(req: NextRequest) {
@@ -116,6 +193,7 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = await createClient();
+
     const {
       data: { user },
       error: authError,
@@ -130,7 +208,7 @@ export async function POST(req: NextRequest) {
     const content = body?.content?.trim();
 
     if (!conversationId || !content) {
-      return new Response("Invalid payload", { status: 400 });
+      return new Response("Payload inválido.", { status: 400 });
     }
 
     const ai = new GoogleGenAI({
@@ -139,12 +217,11 @@ export async function POST(req: NextRequest) {
 
     const encoder = new TextEncoder();
 
-    const stream = new ReadableStream({
+    const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
         let fullResponse = "";
 
         try {
-          // 1) valida conversa + resolve agente
           const conversation = await getConversationWithAgent(
             conversationId,
             user.id
@@ -152,7 +229,6 @@ export async function POST(req: NextRequest) {
 
           const agent = getAgentFromConversation(conversation.agents);
 
-          // 2) salva a mensagem do usuário
           await saveMessage({
             conversationId,
             role: "user",
@@ -160,20 +236,21 @@ export async function POST(req: NextRequest) {
             metadata: null,
           });
 
-          // 3) busca histórico recente após salvar
           const history = await getRecentMessagesByConversationId(
             conversationId,
             agent.max_history_messages || 12
           );
 
-          // 4) recupera conhecimento (stub por enquanto)
-          const knowledge = await retrieveKnowledge(agent.id, content);
+          const knowledge = await retrieveKnowledge({
+            agentId: agent.id,
+            conversationId,
+            query: content,
+          });
 
-          // 5) monta conteúdo para o Gemini
           const contents = mapMessagesToGemini(history);
 
           const responseStream = await ai.models.generateContentStream({
-            model: agent.model || "gemini-2.5-flash",
+            model: agent.model || "gemini-1.5-flash",
             contents,
             config: {
               systemInstruction: buildSystemInstruction(agent, knowledge),
@@ -182,7 +259,7 @@ export async function POST(req: NextRequest) {
           });
 
           for await (const chunk of responseStream) {
-            const token = chunk.text ?? "";
+            const token = extractChunkText(chunk);
 
             if (!token) continue;
 
@@ -198,14 +275,13 @@ export async function POST(req: NextRequest) {
             );
           }
 
-          // 6) salva resposta final do assistente
           const savedAssistantMessage = await saveMessage({
             conversationId,
             role: "assistant",
             content: fullResponse,
             metadata: {
               provider: "gemini",
-              model: agent.model,
+              model: agent.model || "gemini-1.5-flash",
             },
           });
 

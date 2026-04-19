@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { AgentsPage } from "@/components/agents/agents-page";
 import { getAllAgents } from "@/server/repositories/agents-repository";
+import { listUserConversationsByAgent } from "@/server/repositories/conversations-repository";
+import { createClient } from "@/lib/supabase/server";
 
 type AgentesPageRouteProps = {
   searchParams?: Promise<{
@@ -15,7 +17,13 @@ export default async function AgentesPageRoute({
   const agents = await getAllAgents();
 
   if (agents.length === 0) {
-    return <AgentsPage agents={[]} selectedAgent={null} />;
+    return (
+      <AgentsPage
+        agents={[]}
+        selectedAgent={null}
+        conversations={[]}
+      />
+    );
   }
 
   const selectedSlug = params?.slug ?? agents[0].slug;
@@ -26,5 +34,21 @@ export default async function AgentesPageRoute({
     redirect(`/agentes?slug=${selectedAgent.slug}`);
   }
 
-  return <AgentsPage agents={agents} selectedAgent={selectedAgent} />;
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const conversations =
+    user && selectedAgent
+      ? await listUserConversationsByAgent(user.id, selectedAgent.id)
+      : [];
+
+  return (
+    <AgentsPage
+      agents={agents}
+      selectedAgent={selectedAgent}
+      conversations={conversations}
+    />
+  );
 }
