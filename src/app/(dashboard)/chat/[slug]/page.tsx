@@ -14,6 +14,12 @@ import { RenameConversationForm } from "@/components/chat/rename-conversation-fo
 import Link from "next/link";
 import { ChevronLeft, Home } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ShareConversationPanel } from "@/components/chat/share-conversation-panel";
+import { listOrganizationMembersForUser } from "@/server/repositories/organization-members-repository";
+import {
+  isConversationOwner,
+  listConversationParticipants,
+} from "@/server/repositories/conversation-participants-repository";
 
 type ChatAgentPageProps = {
   params: Promise<{
@@ -61,12 +67,11 @@ export default async function ChatAgentPage({
     redirect(`/chat/${slug}?conversation=${createdConversation.id}`);
   }
 
-  const conversation = await getConversationWithAgent(
-    selectedConversationId,
-    user.id
-  );
-
+  const conversation = await getConversationWithAgent(selectedConversationId, user.id);
   const messages = await getMessagesByConversationId(conversation.id);
+  const members = await listOrganizationMembersForUser(user.id);
+  const participants = await listConversationParticipants(conversation.id);
+  const owner = await isConversationOwner({conversationId: conversation.id, userId: user.id,});
 
   return (
     <main className="flex h-screen overflow-hidden bg-background">
@@ -80,7 +85,7 @@ export default async function ChatAgentPage({
               Gerencie contextos diferentes com conversas separadas.
             </p>
           </div>
-          <div className="flex items-center justify-around">
+          <div className="flex items-start gap-2">
             <CreateConversationButton agentSlug={agent.slug} />
             <Link
                 href="/chat"
@@ -92,6 +97,16 @@ export default async function ChatAgentPage({
                 <Home className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
                 Voltar ao Chat
               </Link>
+            </div>
+            <div className="flex items-start gap-2">
+              <ShareConversationPanel
+                conversationId={conversation.id}
+                agentSlug={agent.slug}
+                currentUserId={user.id}
+                members={members}
+                participants={participants}
+                isOwner={owner}
+              />
           </div>
         </div>
 

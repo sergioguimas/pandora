@@ -42,25 +42,46 @@ export async function getActiveAgents(
 
   const agentIds = agents.map((agent) => agent.id);
 
-  const { data: conversationsData, error: conversationsError } = await supabase
-    .from("conversations")
-    .select("id, agent_id, titulo, updated_at")
-    .eq("user_id", userId)
-    .in("agent_id", agentIds)
-    .order("updated_at", { ascending: false });
+  const { data: participantRows, error: participantError } = await supabase
+    .from("conversation_participants")
+    .select("conversation_id")
+    .eq("user_id", userId);
 
-  if (conversationsError) {
-    throw new Error("Erro ao buscar conversas.");
+  if (participantError) {
+    throw new Error("Erro ao buscar participações do usuário.");
   }
 
-  const conversations = (conversationsData ?? []) as Array<{
+  const conversationIdsFromParticipants = (participantRows ?? []).map(
+    (row) => row.conversation_id as string
+  );
+
+  let conversations: Array<{
     id: string;
     agent_id: string;
     titulo: string | null;
     updated_at: string;
-  }>;
+  }> = [];
 
-  // 🔥 pegar a conversa mais recente por agente
+  if (conversationIdsFromParticipants.length > 0) {
+    const { data: conversationsData, error: conversationsError } = await supabase
+      .from("conversations")
+      .select("id, agent_id, titulo, updated_at")
+      .in("id", conversationIdsFromParticipants)
+      .in("agent_id", agentIds)
+      .order("updated_at", { ascending: false });
+
+    if (conversationsError) {
+      throw new Error("Erro ao buscar conversas.");
+    }
+
+    conversations = (conversationsData ?? []) as Array<{
+      id: string;
+      agent_id: string;
+      titulo: string | null;
+      updated_at: string;
+    }>;
+  }
+
   const latestConversationMap = new Map<
     string,
     {

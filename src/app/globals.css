@@ -4,12 +4,12 @@
 
 :root {
   /* Fundo e Texto: Tons levemente mais suaves para reduzir fadiga visual */
-  --background: oklch(0.99 0.005 0); 
+  --background: oklch(0.99 0 0); 
   --foreground: oklch(0.25 0.01 0);
 
   /* Cards e Popovers: Bordas sutis e profundidade com opacidade */
-  --card: oklch(1 0 0 / 0.8);
-  --card-foreground: oklch(0.25 0.01 0);
+  --card: oklch(1 0 0 / 0.95);
+  --card-foreground: oklch(0.2 0 0);
   --popover: oklch(1 0 0 / 0.95);
   --popover-foreground: oklch(0.25 0.01 0);
 
@@ -36,11 +36,11 @@
 
 .dark {
   /* Fundo Dark: Azul Petróleo Profundo em vez de preto puro */
-  --background: oklch(0.18 0.015 260);
+  --background: oklch(0.12 0.01 260);
   --foreground: oklch(0.98 0.005 0);
 
   /* Superfícies Elevadas no Dark */
-  --card: oklch(0.22 0.02 260 / 0.6);
+  --card: oklch(0.2 0.01 260 / 0.98);
   --card-foreground: oklch(0.98 0.005 0);
   --popover: oklch(0.2 0.02 260 / 0.9);
   --popover-foreground: oklch(0.98 0.005 0);
@@ -75,7 +75,7 @@ body {
 body {
   /* Gradiente radial sutil para profundidade visual (toque moderno) */
   background:
-    radial-gradient(circle at top right, color-mix(in oklab, var(--primary) 5%, transparent), transparent 40%),
+    radial-gradient(circle at top, color-mix(in oklab, var(--primary) 4%, transparent), transparent 35%),
     radial-gradient(circle at bottom left, color-mix(in oklab, var(--primary) 3%, transparent), transparent 30%),
     var(--background);
   color: var(--foreground);

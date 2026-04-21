@@ -5,7 +5,9 @@ import { createClient } from "@/lib/supabase/server";
 import { getConversationWithAgent, createConversationForAgent, updateConversationTitle } from "@/server/repositories/conversations-repository";
 import { getRecentMessagesByConversationId } from "@/server/repositories/messages-repository";
 import { generateAgentResponse } from "@/server/services/ai/generate-agent-response";
+import { addConversationParticipant, removeConversationParticipant, isConversationOwner } from "@/server/repositories/conversation-participants-repository";
 import { redirect } from "next/navigation";
+
 
 type SendMessageState = {
   ok: boolean;
@@ -152,6 +154,83 @@ export async function renameConversationAction(formData: FormData) {
   }
 
   await updateConversationTitle(conversationId, user.id, title);
+
+  revalidatePath(`/chat/${agentSlug}`);
+  revalidatePath("/chat");
+}
+
+export async function addConversationParticipantAction(formData: FormData) {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    throw new Error("Usuário não autenticado.");
+  }
+
+  const conversationId = String(formData.get("conversationId") ?? "").trim();
+  const participantUserId = String(formData.get("participantUserId") ?? "").trim();
+  const agentSlug = String(formData.get("agentSlug") ?? "").trim();
+
+  if (!conversationId || !participantUserId || !agentSlug) {
+    throw new Error("Dados inválidos para compartilhamento.");
+  }
+
+  const owner = await isConversationOwner({
+    conversationId,
+    userId: user.id,
+  });
+
+  if (!owner) {
+    throw new Error("Somente o dono da conversa pode compartilhar.");
+  }
+
+  await addConversationParticipant({
+    conversationId,
+    userId: participantUserId,
+    role: "member",
+  });
+
+  revalidatePath(`/chat/${agentSlug}`);
+  revalidatePath("/chat");
+}
+
+export async function removeConversationParticipantAction(formData: FormData) {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    throw new Error("Usuário não autenticado.");
+  }
+
+  const conversationId = String(formData.get("conversationId") ?? "").trim();
+  const participantUserId = String(formData.get("participantUserId") ?? "").trim();
+  const agentSlug = String(formData.get("agentSlug") ?? "").trim();
+
+  if (!conversationId || !participantUserId || !agentSlug) {
+    throw new Error("Dados inválidos para remoção.");
+  }
+
+  const owner = await isConversationOwner({
+    conversationId,
+    userId: user.id,
+  });
+
+  if (!owner) {
+    throw new Error("Somente o dono da conversa pode remover participantes.");
+  }
+
+  await removeConversationParticipant({
+    conversationId,
+    userId: participantUserId,
+  });
 
   revalidatePath(`/chat/${agentSlug}`);
   revalidatePath("/chat");
