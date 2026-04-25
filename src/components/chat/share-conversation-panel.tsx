@@ -65,6 +65,15 @@ export function ShareConversationPanel({
     [members, participantIds]
   );
 
+  const conversationUrl =
+    typeof window !== "undefined"
+      ? `${window.location.origin}/chat/${agentSlug}?conversation=${conversationId}`
+      : `/chat/${agentSlug}?conversation=${conversationId}`;
+
+  async function copyConversationLink() {
+    await navigator.clipboard.writeText(conversationUrl);
+  }
+
   console.log(availableMembers);
 
   return (
@@ -96,6 +105,13 @@ export function ShareConversationPanel({
                     Gestão de Acesso
                   </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={copyConversationLink}
+                  className="rounded-xl border border-border/60 bg-card px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent"
+                >
+                  Copiar link da conversa
+                </button>
               </div>
 
               <button
@@ -171,6 +187,8 @@ export function ShareConversationPanel({
                   })
                 )}
               </div>
+
+
 
               {/* Adicionar Novo Membro */}
               {isOwner && (
