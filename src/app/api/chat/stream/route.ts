@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getGeminiClient } from "@/lib/gemini/client";
-
+import { generateQueryEmbedding } from "@/server/services/ai/providers/gemini-embeddings";
 import { getMessagesByConversationId } from "@/server/repositories/messages-repository";
 import { matchKnowledge } from "@/server/repositories/knowledge-repository";
 import { listAgentsByConversation } from "@/server/repositories/conversation-agents-repository";
@@ -142,16 +142,15 @@ export async function POST(req: NextRequest) {
           const ai = getGeminiClient();
 
           // 🔥 LOOP MULTI-AGENTE
+          const previousAgentResponses: Array<{
+            agentName: string;
+            content: string;
+          }> = [];
+
           for (const agent of agentsToUse) {
             let fullResponse = "";
 
-            // 🔹 RAG
-            const embedding = await ai.models.embedContent({
-              model: "text-embedding-004",
-              contents: content,
-            });
-
-            const values = embedding.embeddings?.[0]?.values ?? [];
+            const values = await generateQueryEmbedding(content);
 
             const matches = await matchKnowledge({
               agentId: agent.id,
@@ -159,21 +158,35 @@ export async function POST(req: NextRequest) {
               embedding: values,
             });
 
-            const knowledge = matches
-              .map((m) => m.content)
-              .join("\n\n");
+            const knowledge = matches.map((m) => m.content).join("\n\n");
 
-            const systemInstruction = buildSystemInstruction(
-              agent,
-              knowledge
-            );
+            const systemInstruction = buildSystemInstruction(agent, knowledge);
+
+            const chainContext = previousAgentResponses.length
+              ? [
+                  "RESPOSTAS DOS AGENTES ANTERIORES NESTA RODADA:",
+                  ...previousAgentResponses.map(
+                    (response, index) =>
+                      `#${index + 1} ${response.agentName}:\n${response.content}`
+                  ),
+                  "",
+                  "Use essas respostas como contexto adicional. Você pode complementar, corrigir, validar ou discordar de forma objetiva, respeitando seu papel.",
+                ].join("\n\n")
+              : "";
+
+            const finalSystemInstruction = [
+              systemInstruction,
+              chainContext ? `\n\n${chainContext}` : null,
+            ]
+              .filter(Boolean)
+              .join("\n");
 
             const contents = [
               {
                 role: "user",
                 parts: [
                   {
-                    text: systemInstruction,
+                    text: finalSystemInstruction,
                   },
                 ],
               },
@@ -195,7 +208,6 @@ export async function POST(req: NextRequest) {
               },
             });
 
-            // 🔹 streaming
             for await (const chunk of stream) {
               const text = chunk.text ?? "";
 
@@ -209,12 +221,12 @@ export async function POST(req: NextRequest) {
                     type: "token",
                     token: text,
                     agentId: agent.id,
+                    agentName: agent.nome,
                   })
                 )
               );
             }
 
-            // 🔹 salvar resposta
             const savedAssistantMessage = await saveMessage({
               conversationId,
               userId: null,
@@ -223,6 +235,13 @@ export async function POST(req: NextRequest) {
               metadata: {
                 agent_id: agent.id,
                 agent_name: agent.nome,
+                orchestration: {
+                  mode: "chain",
+                  order: agent.ordem ?? null,
+                  previous_agents: previousAgentResponses.map((response) => ({
+                    agent_name: response.agentName,
+                  })),
+                },
               },
             });
 
@@ -231,6 +250,96 @@ export async function POST(req: NextRequest) {
                 sse({
                   type: "final",
                   message: savedAssistantMessage,
+                })
+              )
+            );
+
+            previousAgentResponses.push({
+              agentName: agent.nome,
+              content: fullResponse,
+            });
+          }
+
+          if (previousAgentResponses.length > 1) {
+            let finalSynthesis = "";
+
+            const synthesisInstruction = [
+              "Você é o sintetizador final do Pandora.",
+              "",
+              "Sua função é consolidar as respostas dos agentes anteriores em uma resposta final clara, objetiva e útil para o usuário.",
+              "",
+              "Regras:",
+              "- Não repita todas as respostas integralmente.",
+              "- Destaque os pontos principais.",
+              "- Resolva conflitos entre agentes, se houver.",
+              "- Se algum agente trouxe informação mais específica, priorize essa informação.",
+              "- Responda em português do Brasil.",
+              "- Seja direto, mas completo.",
+              "",
+              "PERGUNTA ORIGINAL DO USUÁRIO:",
+              content,
+              "",
+              "RESPOSTAS DOS AGENTES:",
+              ...previousAgentResponses.map(
+                (response, index) =>
+                  `#${index + 1} ${response.agentName}:\n${response.content}`
+              ),
+            ].join("\n\n");
+
+            const synthesisStream = await ai.models.generateContentStream({
+              model: agentsToUse[0]?.model ?? "gemini-2.0-flash",
+              contents: [
+                {
+                  role: "user",
+                  parts: [{ text: synthesisInstruction }],
+                },
+              ],
+              config: {
+                temperature: 0.4,
+              },
+            });
+
+            for await (const chunk of synthesisStream) {
+              const text = chunk.text ?? "";
+
+              if (!text) continue;
+
+              finalSynthesis += text;
+
+              controller.enqueue(
+                encoder.encode(
+                  sse({
+                    type: "token",
+                    token: text,
+                    agentId: "pandora-synthesis",
+                    agentName: "Síntese Pandora",
+                  })
+                )
+              );
+            }
+
+            const savedSynthesisMessage = await saveMessage({
+              conversationId,
+              userId: null,
+              role: "assistant",
+              content: finalSynthesis,
+              metadata: {
+                agent_id: "pandora-synthesis",
+                agent_name: "Síntese Pandora",
+                orchestration: {
+                  mode: "synthesis",
+                  source_agents: previousAgentResponses.map((response) => ({
+                    agent_name: response.agentName,
+                  })),
+                },
+              },
+            });
+
+            controller.enqueue(
+              encoder.encode(
+                sse({
+                  type: "final",
+                  message: savedSynthesisMessage,
                 })
               )
             );

@@ -244,61 +244,109 @@ export function ChatPanel({
           }
 
           const parsed = JSON.parse(payload) as
-            | { type: "token"; token: string }
+            | {
+                type: "token";
+                token: string;
+                agentId?: string;
+                agentName?: string;
+              }
+            | { type: "saved_user"; message: Message }
             | { type: "final"; message?: Message }
             | { type: "error"; error: string };
 
+          if (parsed.type === "saved_user") {
+            setLocalMessages((prev) =>
+              mergeRealtimeMessage(prev, parsed.message)
+            );
+
+            continue;
+          }
+
           if (parsed.type === "token") {
-            accumulated += parsed.token;
+            const streamAgentId = parsed.agentId ?? "default-agent";
+            const streamAgentName = parsed.agentName ?? agentName;
+            const tempId = `temp-assistant-${streamAgentId}`;
 
             setLocalMessages((prev) => {
-              const next = [...prev];
-              const lastIndex = next.length - 1;
+              const existingIndex = prev.findIndex(
+                (message) => message.id === tempId
+              );
 
-              if (lastIndex >= 0 && next[lastIndex]?.role === "assistant") {
-                next[lastIndex] = {
-                  ...next[lastIndex],
-                  content: accumulated,
+              if (existingIndex >= 0) {
+                const next = [...prev];
+                const current = next[existingIndex];
+
+                next[existingIndex] = {
+                  ...current,
+                  content: `${current.content ?? ""}${parsed.token}`,
                   isStreaming: true,
                 };
+
+                return next;
               }
 
-              return next;
+              return [
+                ...prev,
+                {
+                  id: tempId,
+                  conversation_id: conversationId,
+                  user_id: null,
+                  role: "assistant",
+                  content: parsed.token,
+                  metadata: {
+                    agent_id: streamAgentId,
+                    agent_name: streamAgentName,
+                  },
+                  created_at: new Date().toISOString(),
+                  isStreaming: true,
+                },
+              ];
             });
+
+            continue;
           }
 
           if (parsed.type === "final") {
-            setLocalMessages((prev) => {
-              const next = [...prev];
-              const lastIndex = next.length - 1;
+            const finalMessage = parsed.message;
 
-              if (lastIndex >= 0 && next[lastIndex]?.role === "assistant") {
-                next[lastIndex] = {
-                  ...(parsed.message
-                    ? parsed.message
-                    : {
-                        ...next[lastIndex],
-                        content: accumulated,
-                        metadata: next[lastIndex]?.metadata ?? null,
-                        created_at:
-                          next[lastIndex]?.created_at ??
-                          new Date().toISOString(),
-                      }),
-                  content: parsed.message?.content ?? accumulated,
-                  metadata:
-                    parsed.message?.metadata ??
-                    next[lastIndex]?.metadata ??
-                    null,
-                  created_at:
-                    parsed.message?.created_at ??
-                    next[lastIndex]?.created_at ??
-                    new Date().toISOString(),
-                  isStreaming: false,
-                };
+            if (!finalMessage) {
+              continue;
+            }
+
+            setLocalMessages((prev) => {
+              const metadata =
+                finalMessage.metadata && typeof finalMessage.metadata === "object"
+                  ? finalMessage.metadata
+                  : {};
+
+              const agentId = (metadata as Record<string, unknown>).agent_id;
+
+              const tempId =
+                typeof agentId === "string" ? `temp-assistant-${agentId}` : null;
+
+              if (!tempId) {
+                return mergeRealtimeMessage(prev, finalMessage);
               }
 
-              return next;
+              const existingIndex = prev.findIndex(
+                (message) => message.id === tempId
+              );
+
+              if (existingIndex >= 0) {
+                const next = [...prev];
+
+                next[existingIndex] = {
+                  ...finalMessage,
+                  isStreaming: false,
+                };
+
+                return next;
+              }
+
+              return mergeRealtimeMessage(prev, finalMessage);
             });
+
+            continue;
           }
 
           if (parsed.type === "error") {

@@ -2,15 +2,14 @@ import { getGeminiClient } from "@/lib/gemini/client";
 
 function extractEmbedding(response: unknown): number[] {
   if (!response || typeof response !== "object") {
-    throw new Error("Resposta inválida do Gemini (embedding).");
+    throw new Error("Resposta inválida do Gemini.");
   }
 
   const value = response as {
-    embedding?: { values?: number[] };
     embeddings?: Array<{ values?: number[] }>;
   };
 
-  const values = value.embedding?.values ?? value.embeddings?.[0]?.values;
+  const values = value.embeddings?.[0]?.values;
 
   if (!values || values.length === 0) {
     throw new Error("Embedding vazio retornado pelo Gemini.");
