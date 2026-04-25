@@ -21,6 +21,8 @@ type ChatPanelProps = {
   redirectPath: string;
   currentUserId: string;
   userProfiles: UserProfile[];
+  activeAgentsCount?: number;
+  orchestrationMode?: "single" | "chain";
 };
 
 type StreamMessage = Message & {
@@ -85,6 +87,8 @@ export function ChatPanel({
   redirectPath,
   currentUserId,
   userProfiles,
+  activeAgentsCount = 1,
+  orchestrationMode = "single",
 }: ChatPanelProps) {
   const [localMessages, setLocalMessages] = useState<StreamMessage[]>(
     messages as StreamMessage[]
@@ -97,6 +101,16 @@ export function ChatPanel({
   const hasStreamingMessage = renderedMessages.some(
     (message) => message.role === "assistant" && message.isStreaming
   );
+
+  const isMultiAgent = activeAgentsCount > 1;
+
+  const statusText = sending
+    ? isMultiAgent
+      ? `Executando cadeia de ${activeAgentsCount} agentes...`
+      : `${agentName} está respondendo...`
+    : isMultiAgent
+      ? `Modo encadeado • ${activeAgentsCount} agentes ativos`
+      : `Modo individual • ${agentName}`;
 
   useEffect(() => {
     setLocalMessages(messages as StreamMessage[]);
@@ -393,6 +407,19 @@ export function ChatPanel({
       </div>
 
       <footer className="relative border-t border-border/60 bg-card/40 backdrop-blur-2xl">
+        <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-3 px-4 pt-4 text-xs text-muted-foreground md:px-8">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="h-2 w-2 shrink-0 rounded-full bg-primary" />
+            <span className="truncate font-medium">{statusText}</span>
+          </div>
+
+          {isMultiAgent ? (
+            <span className="hidden shrink-0 rounded-full border border-border/60 bg-background/60 px-2.5 py-1 font-semibold md:inline-flex">
+              Encadeado
+            </span>
+          ) : null}
+        </div>
+
         <ChatInputForm
           conversationId={conversationId}
           redirectPath={redirectPath}

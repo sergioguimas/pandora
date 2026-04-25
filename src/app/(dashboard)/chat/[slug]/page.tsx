@@ -1,5 +1,3 @@
-import Link from "next/link";
-import { Home } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
@@ -21,11 +19,8 @@ import {
 } from "@/server/repositories/conversation-participants-repository";
 
 import { ChatPanel } from "@/components/chat/chat-panel";
-import { CreateConversationButton } from "@/components/chat/create-conversation-button";
-import { AgentConversationsList } from "@/components/chat/agent-conversations-list";
+import { ChatSidePanel } from "@/components/chat/chat-side-panel";
 import { RenameConversationForm } from "@/components/chat/rename-conversation-form";
-import { ShareConversationPanel } from "@/components/chat/share-conversation-panel";
-import { ConversationAgentsPanel } from "@/components/chat/conversation-agents-panel";
 import { listAgentsByConversation } from "@/server/repositories/conversation-agents-repository";
 
 type ChatAgentPageProps = {
@@ -127,65 +122,23 @@ export default async function ChatAgentPage({
 
   return (
     <main className="flex h-screen overflow-hidden bg-background">
-      <aside className="hidden w-[360px] shrink-0 border-r border-border/60 bg-card/30 lg:flex lg:flex-col">
-        <div className="space-y-4 border-b border-border/60 p-4">
-          <div>
-            <h2 className="text-base font-semibold text-foreground">
-              {agent.nome}
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Gerencie contextos diferentes com conversas separadas.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <CreateConversationButton agentSlug={agent.slug} />
-
-            <Link
-              href="/chat"
-              className="inline-flex items-center gap-2 rounded-xl border border-border/60 bg-card px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent"
-            >
-              <Home className="h-4 w-4" />
-              Voltar
-            </Link>
-          </div>
-
-          <ShareConversationPanel
-            conversationId={conversation.id}
-            agentSlug={agent.slug}
-            currentUserId={user.id}
-            members={members}
-            participants={participants}
-            isOwner={owner}
-          />
-          <ConversationAgentsPanel
-            conversationId={conversation.id}
-            agentSlug={agent.slug}
-            agents={agentesFinal}
-            availableAgents={todosAgents}
-            isOwner={owner}
-          />
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          <AgentConversationsList
-            agentSlug={agent.slug}
-            conversations={conversations}
-            selectedConversationId={conversation.id}
-          />
-        </div>
-      </aside>
+      <ChatSidePanel
+        agentSlug={agent.slug}
+        agentName={agent.nome}
+        conversationId={conversation.id}
+        currentUserId={user.id}
+        isOwner={owner}
+        conversations={conversations}
+        members={members}
+        participants={participants}
+        conversationAgents={agentesFinal}
+        availableAgents={todosAgents}
+      />
 
       <section className="flex min-w-0 flex-1 flex-col">
         <header className="border-b border-border/60 bg-card/40 px-4 py-4 backdrop-blur-xl md:px-6">
           <div className="flex items-center justify-between gap-4">
             <div className="flex min-w-0 items-center gap-3">
-              <Link
-                href="/chat"
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-card text-muted-foreground transition hover:bg-accent hover:text-foreground"
-              >
-                <Home className="h-4 w-4" />
-              </Link>
 
               <div className="min-w-0">
                 <RenameConversationForm
@@ -194,30 +147,7 @@ export default async function ChatAgentPage({
                   initialTitle={conversation.titulo || agent.nome}
                   isOwner={owner}
                 />
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Conversando com {agent.nome}
-                </p>
               </div>
-            </div>
-
-            <div className="flex shrink-0 items-center gap-2 lg:hidden">
-              <CreateConversationButton agentSlug={agent.slug} />
-
-              <ShareConversationPanel
-                conversationId={conversation.id}
-                agentSlug={agent.slug}
-                currentUserId={user.id}
-                members={members}
-                participants={participants}
-                isOwner={owner}
-              />
-              <ConversationAgentsPanel
-                conversationId={conversation.id}
-                agentSlug={agent.slug}
-                agents={agentesFinal}
-                availableAgents={todosAgents}
-                isOwner={owner}
-              />
             </div>
           </div>
         </header>
@@ -229,6 +159,8 @@ export default async function ChatAgentPage({
           redirectPath={`/chat/${agent.slug}?conversation=${conversation.id}`}
           currentUserId={user.id}
           userProfiles={userProfiles}
+          activeAgentsCount={agentesFinal.length}
+          orchestrationMode={agentesFinal.length > 1 ? "chain" : "single"}
         />
         
       </section>

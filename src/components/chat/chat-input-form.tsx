@@ -88,7 +88,7 @@ export function ChatInputForm({
 
         <ChatTextarea
           name="content"
-          placeholder={`Conversar com ${agentName}...`}
+          placeholder={localPending ? "Aguarde a cadeia terminar..." : `Conversar com ${agentName}...`}
           required
           rows={1}
           className={cn(
