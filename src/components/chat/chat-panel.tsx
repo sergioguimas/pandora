@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Message } from "@/types/database";
+import { createClient } from "@/lib/supabase/client";
 import { ChatInputForm } from "@/components/chat/chat-input-form";
 import { ChatMessageList } from "@/components/chat/chat-message-list";
 import { ChatTypingIndicator } from "@/components/chat/chat-typing-indicator";
@@ -33,6 +34,38 @@ function createTempMessage(
   };
 }
 
+function mergeRealtimeMessage(
+  prev: StreamMessage[],
+  newMessage: Message
+): StreamMessage[] {
+  const alreadyExists = prev.some((message) => message.id === newMessage.id);
+
+  if (alreadyExists) {
+    return prev;
+  }
+
+  const equivalentTempIndex = prev.findIndex(
+    (message) =>
+      message.id.startsWith("temp-") &&
+      message.role === newMessage.role &&
+      message.content === newMessage.content &&
+      message.conversation_id === newMessage.conversation_id
+  );
+
+  if (equivalentTempIndex >= 0) {
+    const next = [...prev];
+
+    next[equivalentTempIndex] = {
+      ...newMessage,
+      isStreaming: next[equivalentTempIndex].isStreaming,
+    };
+
+    return next;
+  }
+
+  return [...prev, newMessage];
+}
+
 export function ChatPanel({
   messages,
   agentName,
@@ -49,6 +82,36 @@ export function ChatPanel({
   const hasStreamingMessage = renderedMessages.some(
     (message) => message.role === "assistant" && message.isStreaming
   );
+
+  useEffect(() => {
+    setLocalMessages(messages as StreamMessage[]);
+  }, [messages, conversationId]);
+
+  useEffect(() => {
+    const supabase = createClient();
+
+    const channel = supabase
+      .channel(`messages:${conversationId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload) => {
+          const newMessage = payload.new as Message;
+
+          setLocalMessages((prev) => mergeRealtimeMessage(prev, newMessage));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [conversationId]);
 
   async function handleSendMessage(content: string) {
     const trimmed = content.trim();
@@ -147,10 +210,15 @@ export function ChatPanel({
                         ...next[lastIndex],
                         content: accumulated,
                         metadata: next[lastIndex]?.metadata ?? null,
-                        created_at: next[lastIndex]?.created_at ?? new Date().toISOString(),
+                        created_at:
+                          next[lastIndex]?.created_at ??
+                          new Date().toISOString(),
                       }),
                   content: parsed.message?.content ?? accumulated,
-                  metadata: parsed.message?.metadata ?? next[lastIndex]?.metadata ?? null,
+                  metadata:
+                    parsed.message?.metadata ??
+                    next[lastIndex]?.metadata ??
+                    null,
                   created_at:
                     parsed.message?.created_at ??
                     next[lastIndex]?.created_at ??
@@ -195,10 +263,7 @@ export function ChatPanel({
     <>
       <div className="relative flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 px-4 py-6 md:px-6">
-          <ChatMessageList
-            messages={renderedMessages}
-            agentName={agentName}
-          />
+          <ChatMessageList messages={renderedMessages} agentName={agentName} />
 
           {sending && !hasStreamingMessage && <ChatTypingIndicator />}
         </div>
