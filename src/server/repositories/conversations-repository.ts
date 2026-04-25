@@ -149,7 +149,11 @@ export async function updateConversationTitle(
     .maybeSingle();
 
   if (participantError || !participant) {
-    throw new Error("Você não tem permissão para renomear esta conversa.");
+    throw new Error("Você não participa desta conversa.");
+  }
+
+  if (participant.role !== "owner") {
+    throw new Error("Somente o dono da conversa pode renomeá-la.");
   }
 
   const { error } = await supabase

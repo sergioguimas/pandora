@@ -158,6 +158,7 @@ export default async function ChatAgentPage({
                   conversationId={conversation.id}
                   agentSlug={agent.slug}
                   initialTitle={conversation.titulo || agent.nome}
+                  isOwner={owner}
                 />
                 <p className="mt-1 text-sm text-muted-foreground">
                   Conversando com {agent.nome}

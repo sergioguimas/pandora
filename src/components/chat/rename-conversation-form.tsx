@@ -8,6 +8,7 @@ type RenameConversationFormProps = {
   conversationId: string;
   agentSlug: string;
   initialTitle: string;
+  isOwner: boolean;
 };
 
 type RenameState = {
@@ -39,6 +40,7 @@ export function RenameConversationForm({
   conversationId,
   agentSlug,
   initialTitle,
+  isOwner,
 }: RenameConversationFormProps) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(initialTitle);
@@ -65,13 +67,15 @@ export function RenameConversationForm({
           {initialTitle}
         </h1>
 
-        <button
-          type="button"
-          onClick={() => setEditing(true)}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border/60 bg-card text-muted-foreground transition hover:bg-accent hover:text-foreground"
-        >
-          <Pencil className="h-4 w-4" />
-        </button>
+        {isOwner ? (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border/60 bg-card text-muted-foreground transition hover:bg-accent hover:text-foreground"
+          >
+            <Pencil className="h-4 w-4" />
+          </button>
+        ) : null}
       </div>
     );
   }
