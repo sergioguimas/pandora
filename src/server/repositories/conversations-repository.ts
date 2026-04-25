@@ -164,3 +164,45 @@ export async function updateConversationTitle(
     throw new Error("Erro ao renomear conversa.");
   }
 }
+
+export async function listUserConversationsWithRole(
+  userId: string,
+  agentId: string
+) {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("conversation_participants")
+    .select(`
+      role,
+      conversations (
+        id,
+        titulo,
+        updated_at,
+        agent_id
+      )
+    `)
+    .eq("user_id", userId);
+
+  if (error) {
+    throw new Error("Erro ao buscar conversas do usuário.");
+  }
+
+  const rows = (data ?? []) as any[];
+
+  return rows
+    .map((row) => {
+      const convo = Array.isArray(row.conversations)
+        ? row.conversations[0]
+        : row.conversations;
+
+      if (!convo) return null;
+
+      return {
+        ...convo,
+        role: row.role as "owner" | "member",
+      };
+    })
+    .filter(Boolean)
+    .filter((c) => c.agent_id === agentId);
+}

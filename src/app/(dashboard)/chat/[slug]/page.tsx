@@ -21,6 +21,7 @@ import { CreateConversationButton } from "@/components/chat/create-conversation-
 import { AgentConversationsList } from "@/components/chat/agent-conversations-list";
 import { RenameConversationForm } from "@/components/chat/rename-conversation-form";
 import { ShareConversationPanel } from "@/components/chat/share-conversation-panel";
+import { listUserConversationsWithRole } from "@/server/repositories/conversations-repository";
 
 type ChatAgentPageProps = {
   params: Promise<{
@@ -55,7 +56,10 @@ export default async function ChatAgentPage({
     notFound();
   }
 
-  const conversations = await listUserConversationsByAgent(user.id, agent.id);
+  const conversations = await listUserConversationsWithRole(
+    user.id,
+    agent.id
+  );
   const conversationFromUrl = search?.conversation ?? null;
 
   let selectedConversationId: string;
@@ -87,6 +91,12 @@ export default async function ChatAgentPage({
     conversationId: conversation.id,
     userId: user.id,
   });
+  const userProfiles = participants.map((participant) => ({
+    id: participant.user_id,
+    nome: participant.nome,
+    email: participant.email,
+    avatar_url: participant.avatar_url,
+  }));
 
   return (
     <main className="flex h-screen overflow-hidden bg-background">
@@ -175,6 +185,8 @@ export default async function ChatAgentPage({
           agentName={agent.nome}
           conversationId={conversation.id}
           redirectPath={`/chat/${agent.slug}?conversation=${conversation.id}`}
+          currentUserId={user.id}
+          userProfiles={userProfiles}
         />
       </section>
     </main>

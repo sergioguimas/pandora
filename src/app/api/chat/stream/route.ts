@@ -122,6 +122,7 @@ function buildSystemInstruction(
 
 async function saveMessage(params: {
   conversationId: string;
+  userId?: string | null;
   role: "user" | "assistant" | "system";
   content: string;
   metadata?: Record<string, unknown> | null;
@@ -132,11 +133,12 @@ async function saveMessage(params: {
     .from("messages")
     .insert({
       conversation_id: params.conversationId,
+      user_id: params.userId ?? null,
       role: params.role,
       content: params.content,
       metadata: params.metadata ?? null,
     })
-    .select("id, conversation_id, role, content, metadata, created_at")
+    .select("id, conversation_id, user_id, role, content, metadata, created_at")
     .single();
 
   if (error || !data) {
@@ -231,6 +233,7 @@ export async function POST(req: NextRequest) {
 
           await saveMessage({
             conversationId,
+            userId: user.id,
             role: "user",
             content,
             metadata: null,
@@ -277,6 +280,7 @@ export async function POST(req: NextRequest) {
 
           const savedAssistantMessage = await saveMessage({
             conversationId,
+            userId: null,
             role: "assistant",
             content: fullResponse,
             metadata: {

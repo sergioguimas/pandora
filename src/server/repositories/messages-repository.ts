@@ -4,6 +4,7 @@ import type { Message } from "@/types/database";
 type MessageRow = {
   id: string;
   conversation_id: string;
+  user_id: string | null;
   role: "user" | "assistant" | "system";
   content: string | null;
   metadata: unknown;
@@ -13,9 +14,7 @@ type MessageRow = {
 function normalizeMetadata(
   value: unknown
 ): Record<string, unknown> | null {
-  if (value === null || value === undefined) {
-    return null;
-  }
+  if (value === null || value === undefined) return null;
 
   if (typeof value === "object" && !Array.isArray(value)) {
     return value as Record<string, unknown>;
@@ -28,6 +27,7 @@ function mapMessage(row: MessageRow): Message {
   return {
     id: row.id,
     conversation_id: row.conversation_id,
+    user_id: row.user_id,
     role: row.role,
     content: row.content,
     metadata: normalizeMetadata(row.metadata),
@@ -42,7 +42,7 @@ export async function getMessagesByConversationId(
 
   const { data, error } = await supabase
     .from("messages")
-    .select("*")
+    .select("id, conversation_id, user_id, role, content, metadata, created_at")
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: true });
 
@@ -61,7 +61,7 @@ export async function getRecentMessagesByConversationId(
 
   const { data, error } = await supabase
     .from("messages")
-    .select("*")
+    .select("id, conversation_id, user_id, role, content, metadata, created_at")
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: false })
     .limit(limit);

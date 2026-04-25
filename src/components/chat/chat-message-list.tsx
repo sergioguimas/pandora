@@ -13,14 +13,39 @@ type StreamMessage = Message & {
   isStreaming?: boolean;
 };
 
+type UserProfile = {
+  id: string;
+  nome: string | null;
+  email: string | null;
+  avatar_url: string | null;
+};
+
 type ChatMessageListProps = {
   messages: StreamMessage[];
   agentName: string;
+  currentUserId: string;
+  userProfiles: UserProfile[];
 };
+
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+}
+
+function getDisplayName(profile: UserProfile | undefined, fallbackId: string | null) {
+  if (!fallbackId) return "Usuário";
+  return profile?.nome || profile?.email || "Usuário";
+}
 
 export function ChatMessageList({
   messages,
   agentName,
+  currentUserId,
+  userProfiles,
 }: ChatMessageListProps) {
   const endRef = useRef<HTMLDivElement | null>(null);
 
@@ -36,6 +61,23 @@ export function ChatMessageList({
       <AnimatePresence initial={false}>
         {messages.map((message, index) => {
           const isUser = message.role === "user";
+          const isCurrentUser = isUser && message.user_id === currentUserId;
+          const isAssistant = message.role === "assistant";
+
+          const profile = userProfiles.find(
+            (item) => item.id === message.user_id
+          );
+
+          const senderName = isAssistant
+            ? agentName
+            : isCurrentUser
+              ? "Você"
+              : getDisplayName(profile, message.user_id);
+
+          const avatarLabel = isAssistant
+            ? "AI"
+            : getInitials(senderName) || <User className="h-4 w-4" />;
+
           const isEmptyStreamingAssistant =
             message.role === "assistant" &&
             message.isStreaming &&
@@ -52,36 +94,50 @@ export function ChatMessageList({
               }}
               className={cn(
                 "flex w-full items-end gap-3",
-                isUser ? "flex-row-reverse" : "flex-row"
+                isCurrentUser ? "flex-row-reverse" : "flex-row"
               )}
             >
               <div
                 className={cn(
                   "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-[10px] font-bold shadow-sm",
-                  isUser
-                    ? "border-border bg-background text-muted-foreground"
-                    : "border-primary/20 bg-primary text-primary-foreground"
+                  isAssistant
+                    ? "border-primary/20 bg-primary text-primary-foreground"
+                    : isCurrentUser
+                      ? "border-border bg-background text-muted-foreground"
+                      : "border-border bg-card text-foreground"
                 )}
               >
-                {isUser ? (
-                  <User className="h-4 w-4" />
-                ) : (
-                  <Bot className="h-4 w-4" />
-                )}
+                {isAssistant ? <Bot className="h-4 w-4" /> : avatarLabel}
               </div>
 
               <div
                 className={cn(
                   "flex max-w-[85%] flex-col gap-1 md:max-w-[75%]",
-                  isUser ? "items-end" : "items-start"
+                  isCurrentUser ? "items-end" : "items-start"
                 )}
               >
                 <div
                   className={cn(
+                    "flex items-center gap-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60",
+                    isCurrentUser && "flex-row-reverse"
+                  )}
+                >
+                  <span>{senderName}</span>
+                  <span>
+                    {format(new Date(message.created_at), "HH:mm", {
+                      locale: ptBR,
+                    })}
+                  </span>
+                </div>
+
+                <div
+                  className={cn(
                     "relative rounded-2xl px-5 py-3 text-sm leading-relaxed shadow-sm transition-all",
-                    isUser
+                    isCurrentUser
                       ? "rounded-br-none bg-primary text-primary-foreground shadow-primary/10"
-                      : "rounded-bl-none border border-border/60 bg-card/80 text-card-foreground backdrop-blur-md"
+                      : isAssistant
+                        ? "rounded-bl-none border border-border/60 bg-card/80 text-card-foreground backdrop-blur-md"
+                        : "rounded-bl-none border border-border/60 bg-muted/50 text-foreground"
                   )}
                 >
                   {isEmptyStreamingAssistant ? (
@@ -93,7 +149,10 @@ export function ChatMessageList({
                           <motion.span
                             key={dot}
                             initial={{ y: 0, opacity: 0.4 }}
-                            animate={{ y: [0, -5, 0], opacity: [0.4, 1, 0.4] }}
+                            animate={{
+                              y: [0, -5, 0],
+                              opacity: [0.4, 1, 0.4],
+                            }}
                             transition={{
                               duration: 0.8,
                               repeat: Infinity,
@@ -111,12 +170,6 @@ export function ChatMessageList({
                     </p>
                   )}
                 </div>
-
-                <span className="px-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50">
-                  {format(new Date(message.created_at), "HH:mm", {
-                    locale: ptBR,
-                  })}
-                </span>
               </div>
             </motion.div>
           );

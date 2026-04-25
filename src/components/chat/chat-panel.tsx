@@ -7,11 +7,20 @@ import { ChatInputForm } from "@/components/chat/chat-input-form";
 import { ChatMessageList } from "@/components/chat/chat-message-list";
 import { ChatTypingIndicator } from "@/components/chat/chat-typing-indicator";
 
+type UserProfile = {
+  id: string;
+  nome: string | null;
+  email: string | null;
+  avatar_url: string | null;
+};
+
 type ChatPanelProps = {
   messages: Message[];
   agentName: string;
   conversationId: string;
   redirectPath: string;
+  currentUserId: string;
+  userProfiles: UserProfile[];
 };
 
 type StreamMessage = Message & {
@@ -21,11 +30,13 @@ type StreamMessage = Message & {
 function createTempMessage(
   role: "user" | "assistant",
   content: string,
-  conversationId: string
+  conversationId: string,
+  userId: string | null
 ): StreamMessage {
   return {
     id: `temp-${crypto.randomUUID()}`,
     conversation_id: conversationId,
+    user_id: userId,
     role,
     content,
     metadata: null,
@@ -49,7 +60,8 @@ function mergeRealtimeMessage(
       message.id.startsWith("temp-") &&
       message.role === newMessage.role &&
       message.content === newMessage.content &&
-      message.conversation_id === newMessage.conversation_id
+      message.conversation_id === newMessage.conversation_id &&
+      message.user_id === newMessage.user_id
   );
 
   if (equivalentTempIndex >= 0) {
@@ -71,10 +83,13 @@ export function ChatPanel({
   agentName,
   conversationId,
   redirectPath,
+  currentUserId,
+  userProfiles,
 }: ChatPanelProps) {
   const [localMessages, setLocalMessages] = useState<StreamMessage[]>(
     messages as StreamMessage[]
   );
+
   const [sending, setSending] = useState(false);
 
   const renderedMessages = useMemo(() => localMessages, [localMessages]);
@@ -85,31 +100,75 @@ export function ChatPanel({
 
   useEffect(() => {
     setLocalMessages(messages as StreamMessage[]);
-  }, [messages, conversationId]);
+  }, [conversationId, messages]);
 
   useEffect(() => {
-    const supabase = createClient();
+    let active = true;
 
-    const channel = supabase
-      .channel(`messages:${conversationId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: `conversation_id=eq.${conversationId}`,
-        },
-        (payload) => {
-          const newMessage = payload.new as Message;
+    async function subscribeToMessages() {
+      console.log("🔌 Realtime effect mounted:", conversationId);
 
-          setLocalMessages((prev) => mergeRealtimeMessage(prev, newMessage));
-        }
-      )
-      .subscribe();
+      const supabase = createClient();
+
+      const {
+        data: { session },
+        error,
+      } = await supabase.auth.getSession();
+
+      if (error) {
+        console.error("Erro ao buscar sessão do Realtime:", error);
+        return;
+      }
+
+      if (!session?.access_token) {
+        console.warn("Realtime sem sessão autenticada.");
+        return;
+      }
+
+      supabase.realtime.setAuth(session.access_token);
+
+      if (!active) return;
+
+      const channel = supabase
+        .channel(`messages:${conversationId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "messages",
+            filter: `conversation_id=eq.${conversationId}`,
+          },
+          (payload) => {
+            console.log("🔥 REALTIME RECEIVED:", payload);
+
+            const newMessage = payload.new as Message;
+
+            setLocalMessages((prev) => mergeRealtimeMessage(prev, newMessage));
+          }
+        )
+        .subscribe((status) => {
+          console.log("📡 Realtime status:", status);
+        });
+
+      return () => {
+        console.log("❌ Realtime cleanup:", conversationId);
+        supabase.removeChannel(channel);
+      };
+    }
+
+    let cleanup: void | (() => void);
+
+    subscribeToMessages().then((fn) => {
+      cleanup = fn;
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      active = false;
+
+      if (typeof cleanup === "function") {
+        cleanup();
+      }
     };
   }, [conversationId]);
 
@@ -118,8 +177,19 @@ export function ChatPanel({
 
     if (!trimmed || sending) return;
 
-    const userMessage = createTempMessage("user", trimmed, conversationId);
-    const assistantMessage = createTempMessage("assistant", "", conversationId);
+    const userMessage = createTempMessage(
+      "user",
+      trimmed,
+      conversationId,
+      currentUserId
+    );
+
+    const assistantMessage = createTempMessage(
+      "assistant",
+      "",
+      conversationId,
+      null
+    );
 
     setSending(true);
     setLocalMessages((prev) => [...prev, userMessage, assistantMessage]);
@@ -263,9 +333,14 @@ export function ChatPanel({
     <>
       <div className="relative flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 px-4 py-6 md:px-6">
-          <ChatMessageList messages={renderedMessages} agentName={agentName} />
+          <ChatMessageList
+            messages={renderedMessages}
+            agentName={agentName}
+            currentUserId={currentUserId}
+            userProfiles={userProfiles}
+          />
 
-          {sending && !hasStreamingMessage && <ChatTypingIndicator />}
+          {sending && !hasStreamingMessage ? <ChatTypingIndicator /> : null}
         </div>
       </div>
 
