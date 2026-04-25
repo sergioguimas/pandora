@@ -103,35 +103,48 @@ export async function getConversationWithAgent(
 ): Promise<ConversationWithAgent> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
+  const { data: conversation, error: conversationError } = await supabase
     .from("conversations")
-    .select(`
-      id,
-      user_id,
-      agent_id,
-      titulo,
-      created_at,
-      updated_at,
-      agents (
-        id,
-        slug,
-        nome,
-        descricao,
-        prompt_base,
-        provider,
-        model,
-        temperature,
-        max_history_messages
-      )
-    `)
+    .select("id, user_id, agent_id, titulo, created_at, updated_at")
     .eq("id", conversationId)
-    .single();
+    .maybeSingle();
 
-  if (error || !data) {
-    throw new Error("Erro ao carregar conversa com agente.");
+  if (conversationError) {
+    throw new Error(`Erro ao carregar conversa: ${conversationError.message}`);
   }
 
-  return data as ConversationWithAgent;
+  if (!conversation) {
+    throw new Error("Conversa não encontrada ou sem permissão de acesso.");
+  }
+
+  const { data: agent, error: agentError } = await supabase
+    .from("agents")
+    .select(`
+      id,
+      slug,
+      nome,
+      descricao,
+      prompt_base,
+      provider,
+      model,
+      temperature,
+      max_history_messages
+    `)
+    .eq("id", conversation.agent_id)
+    .maybeSingle();
+
+  if (agentError) {
+    throw new Error(`Erro ao carregar agente: ${agentError.message}`);
+  }
+
+  if (!agent) {
+    throw new Error("Agente principal da conversa não encontrado.");
+  }
+
+  return {
+    ...conversation,
+    agents: agent,
+  } as ConversationWithAgent;
 }
 
 export async function updateConversationTitle(

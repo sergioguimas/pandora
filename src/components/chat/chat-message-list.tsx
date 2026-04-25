@@ -36,7 +36,10 @@ function getInitials(name: string) {
     .join("");
 }
 
-function getDisplayName(profile: UserProfile | undefined, fallbackId: string | null) {
+function getDisplayName(
+  profile: UserProfile | undefined,
+  fallbackId: string | null
+) {
   if (!fallbackId) return "Usuário";
   return profile?.nome || profile?.email || "Usuário";
 }
@@ -61,25 +64,31 @@ export function ChatMessageList({
       <AnimatePresence initial={false}>
         {messages.map((message, index) => {
           const isUser = message.role === "user";
-          const isCurrentUser = isUser && message.user_id === currentUserId;
           const isAssistant = message.role === "assistant";
+          const isCurrentUser = isUser && message.user_id === currentUserId;
 
           const profile = userProfiles.find(
             (item) => item.id === message.user_id
           );
 
+          // 🔥 MULTI-AGENTE
+          const metadata = (message.metadata ?? {}) as Record<string, any>;
+
+          const agentNameFromMetadata =
+            metadata.agent_name || agentName;
+
           const senderName = isAssistant
-            ? agentName
+            ? agentNameFromMetadata
             : isCurrentUser
               ? "Você"
               : getDisplayName(profile, message.user_id);
 
           const avatarLabel = isAssistant
             ? "AI"
-            : getInitials(senderName) || <User className="h-4 w-4" />;
+            : getInitials(senderName) || "";
 
           const isEmptyStreamingAssistant =
-            message.role === "assistant" &&
+            isAssistant &&
             message.isStreaming &&
             !(message.content ?? "").trim();
 
@@ -97,6 +106,7 @@ export function ChatMessageList({
                 isCurrentUser ? "flex-row-reverse" : "flex-row"
               )}
             >
+              {/* Avatar */}
               <div
                 className={cn(
                   "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-[10px] font-bold shadow-sm",
@@ -107,15 +117,23 @@ export function ChatMessageList({
                       : "border-border bg-card text-foreground"
                 )}
               >
-                {isAssistant ? <Bot className="h-4 w-4" /> : avatarLabel}
+                {isAssistant ? (
+                  <Bot className="h-4 w-4" />
+                ) : avatarLabel ? (
+                  avatarLabel
+                ) : (
+                  <User className="h-4 w-4" />
+                )}
               </div>
 
+              {/* Conteúdo */}
               <div
                 className={cn(
                   "flex max-w-[85%] flex-col gap-1 md:max-w-[75%]",
                   isCurrentUser ? "items-end" : "items-start"
                 )}
               >
+                {/* Header */}
                 <div
                   className={cn(
                     "flex items-center gap-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60",
@@ -130,6 +148,7 @@ export function ChatMessageList({
                   </span>
                 </div>
 
+                {/* Bubble */}
                 <div
                   className={cn(
                     "relative rounded-2xl px-5 py-3 text-sm leading-relaxed shadow-sm transition-all",
@@ -142,7 +161,9 @@ export function ChatMessageList({
                 >
                   {isEmptyStreamingAssistant ? (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <span className="font-medium">Digitando</span>
+                      <span className="font-medium">
+                        {agentNameFromMetadata} está digitando
+                      </span>
 
                       <div className="flex items-center gap-1.5">
                         {[0, 1, 2].map((dot) => (

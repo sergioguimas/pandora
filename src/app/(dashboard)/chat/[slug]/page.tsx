@@ -3,11 +3,15 @@ import { Home } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
-import { getAgentBySlug } from "@/server/repositories/agents-repository";
+import {
+  getAgentBySlug,
+  getAllAgents,
+} from "@/server/repositories/agents-repository";
+
 import {
   createConversationForAgent,
   getConversationWithAgent,
-  listUserConversationsByAgent,
+  listUserConversationsWithRole,
 } from "@/server/repositories/conversations-repository";
 import { getMessagesByConversationId } from "@/server/repositories/messages-repository";
 import { listOrganizationMembersForUser } from "@/server/repositories/organization-members-repository";
@@ -21,7 +25,8 @@ import { CreateConversationButton } from "@/components/chat/create-conversation-
 import { AgentConversationsList } from "@/components/chat/agent-conversations-list";
 import { RenameConversationForm } from "@/components/chat/rename-conversation-form";
 import { ShareConversationPanel } from "@/components/chat/share-conversation-panel";
-import { listUserConversationsWithRole } from "@/server/repositories/conversations-repository";
+import { ConversationAgentsPanel } from "@/components/chat/conversation-agents-panel";
+import { listAgentsByConversation } from "@/server/repositories/conversation-agents-repository";
 
 type ChatAgentPageProps = {
   params: Promise<{
@@ -87,16 +92,26 @@ export default async function ChatAgentPage({
 
   const members = await listOrganizationMembersForUser(user.id);
   const participants = await listConversationParticipants(conversation.id);
+  const agentsDaConversa = await listAgentsByConversation(conversation.id);
   const owner = await isConversationOwner({
     conversationId: conversation.id,
     userId: user.id,
   });
+
   const userProfiles = participants.map((participant) => ({
     id: participant.user_id,
     nome: participant.nome,
     email: participant.email,
     avatar_url: participant.avatar_url,
   }));
+
+  const todosAgents = await getAllAgents();
+
+  let agentesFinal = agentsDaConversa;
+
+  if (agentesFinal.length === 0) {
+    agentesFinal = [agent];
+  }
 
   return (
     <main className="flex h-screen overflow-hidden bg-background">
@@ -129,6 +144,13 @@ export default async function ChatAgentPage({
             currentUserId={user.id}
             members={members}
             participants={participants}
+            isOwner={owner}
+          />
+          <ConversationAgentsPanel
+            conversationId={conversation.id}
+            agentSlug={agent.slug}
+            agents={agentesFinal}
+            availableAgents={todosAgents}
             isOwner={owner}
           />
         </div>
@@ -177,6 +199,13 @@ export default async function ChatAgentPage({
                 participants={participants}
                 isOwner={owner}
               />
+              <ConversationAgentsPanel
+                conversationId={conversation.id}
+                agentSlug={agent.slug}
+                agents={agentesFinal}
+                availableAgents={todosAgents}
+                isOwner={owner}
+              />
             </div>
           </div>
         </header>
@@ -189,6 +218,7 @@ export default async function ChatAgentPage({
           currentUserId={user.id}
           userProfiles={userProfiles}
         />
+        
       </section>
     </main>
   );

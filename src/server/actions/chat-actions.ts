@@ -235,3 +235,72 @@ export async function removeConversationParticipantAction(formData: FormData) {
   revalidatePath(`/chat/${agentSlug}`);
   revalidatePath("/chat");
 }
+
+export async function addConversationAgentAction(formData: FormData) {
+  const conversationId = String(formData.get("conversationId") ?? "");
+  const agentId = String(formData.get("agentId") ?? "");
+  const agentSlug = String(formData.get("agentSlug") ?? "");
+
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) throw new Error("Usuário não autenticado.");
+
+  const owner = await isConversationOwner({
+    conversationId,
+    userId: user.id,
+  });
+
+  if (!owner) {
+    throw new Error("Apenas o dono pode adicionar agentes.");
+  }
+
+  const { error } = await supabase.from("conversation_agents").insert({
+    conversation_id: conversationId,
+    agent_id: agentId,
+  });
+
+  if (error) {
+    throw new Error(`Erro ao adicionar agente: ${error.message}`);
+  }
+
+  revalidatePath(`/chat/${agentSlug}`);
+}
+
+export async function removeConversationAgentAction(formData: FormData) {
+  const conversationId = String(formData.get("conversationId") ?? "");
+  const agentId = String(formData.get("agentId") ?? "");
+  const agentSlug = String(formData.get("agentSlug") ?? "");
+
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) throw new Error("Usuário não autenticado.");
+
+  const owner = await isConversationOwner({
+    conversationId,
+    userId: user.id,
+  });
+
+  if (!owner) {
+    throw new Error("Apenas o dono pode remover agentes.");
+  }
+
+  const { error } = await supabase
+    .from("conversation_agents")
+    .delete()
+    .eq("conversation_id", conversationId)
+    .eq("agent_id", agentId);
+
+  if (error) {
+    throw new Error(`Erro ao remover agente: ${error.message}`);
+  }
+
+  revalidatePath(`/chat/${agentSlug}`);
+}

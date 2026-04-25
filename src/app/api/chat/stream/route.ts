@@ -1,101 +1,54 @@
 import { NextRequest } from "next/server";
-import { GoogleGenAI } from "@google/genai";
-
 import { createClient } from "@/lib/supabase/server";
-import { getConversationWithAgent } from "@/server/repositories/conversations-repository";
-import { getRecentMessagesByConversationId } from "@/server/repositories/messages-repository";
+import { getGeminiClient } from "@/lib/gemini/client";
+
+import { getMessagesByConversationId } from "@/server/repositories/messages-repository";
 import { matchKnowledge } from "@/server/repositories/knowledge-repository";
-import { generateQueryEmbedding } from "@/server/services/ai/providers/gemini-embeddings";
-import type { Message } from "@/types/database";
+import { listAgentsByConversation } from "@/server/repositories/conversation-agents-repository";
 
-export const runtime = "nodejs";
-
-type StreamRequestBody = {
-  conversationId: string;
-  content: string;
-};
-
-type RuntimeAgent = {
+type Message = {
   id: string;
-  slug: string;
-  nome: string;
-  descricao: string | null;
-  prompt_base: string;
-  provider: "gemini" | "openai";
-  model: string;
-  temperature: number;
-  max_history_messages: number;
-};
-
-type GeminiContent = {
-  role: "user" | "model";
-  parts: Array<{ text: string }>;
+  conversation_id: string;
+  user_id: string | null;
+  role: "user" | "assistant" | "system";
+  content: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
 };
 
 function sse(data: unknown) {
   return `data: ${JSON.stringify(data)}\n\n`;
 }
 
-function getAgentFromConversation(
-  value: Awaited<ReturnType<typeof getConversationWithAgent>>["agents"]
-): RuntimeAgent {
-  if (!value) {
-    throw new Error("Agente da conversa não encontrado.");
+async function saveMessage(params: {
+  conversationId: string;
+  userId?: string | null;
+  role: "user" | "assistant" | "system";
+  content: string;
+  metadata?: Record<string, unknown> | null;
+}): Promise<Message> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("messages")
+    .insert({
+      conversation_id: params.conversationId,
+      user_id: params.userId ?? null,
+      role: params.role,
+      content: params.content,
+      metadata: params.metadata ?? null,
+    })
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw new Error("Erro ao salvar mensagem.");
   }
 
-  const agent = Array.isArray(value) ? value[0] : value;
-
-  if (!agent) {
-    throw new Error("Agente da conversa não encontrado.");
-  }
-
-  return {
-    id: agent.id,
-    slug: agent.slug,
-    nome: agent.nome,
-    descricao: agent.descricao,
-    prompt_base: agent.prompt_base,
-    provider: agent.provider,
-    model: agent.model,
-    temperature: agent.temperature,
-    max_history_messages: agent.max_history_messages,
-  };
+  return data as Message;
 }
 
-function mapMessagesToGemini(messages: Message[]): GeminiContent[] {
-  return messages
-    .filter(
-      (message) =>
-        (message.role === "user" || message.role === "assistant") &&
-        (message.content ?? "").trim().length > 0
-    )
-    .map((message) => ({
-      role: message.role === "assistant" ? "model" : "user",
-      parts: [{ text: message.content ?? "" }],
-    }));
-}
-
-function extractChunkText(chunk: unknown): string {
-  if (!chunk || typeof chunk !== "object") return "";
-
-  const value = chunk as {
-    text?: string;
-    candidates?: Array<{
-      content?: {
-        parts?: Array<{
-          text?: string;
-        }>;
-      };
-    }>;
-  };
-
-  return value.text ?? value.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-}
-
-function buildSystemInstruction(
-  agent: RuntimeAgent,
-  knowledge: string
-): string {
+function buildSystemInstruction(agent: any, knowledge: string) {
   return [
     `Você é o agente "${agent.nome}".`,
     agent.descricao ? `Descrição: ${agent.descricao}` : null,
@@ -120,195 +73,179 @@ function buildSystemInstruction(
     .join("\n");
 }
 
-async function saveMessage(params: {
-  conversationId: string;
-  userId?: string | null;
-  role: "user" | "assistant" | "system";
-  content: string;
-  metadata?: Record<string, unknown> | null;
-}): Promise<Message> {
+export async function POST(req: NextRequest) {
+  const body = await req.json();
+
+  const { conversationId, content } = body;
+
   const supabase = await createClient();
 
-  const { data, error } = await supabase
-    .from("messages")
-    .insert({
-      conversation_id: params.conversationId,
-      user_id: params.userId ?? null,
-      role: params.role,
-      content: params.content,
-      metadata: params.metadata ?? null,
-    })
-    .select("id, conversation_id, user_id, role, content, metadata, created_at")
-    .single();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (error || !data) {
-    throw new Error("Erro ao salvar mensagem.");
+  if (!user) {
+    return new Response("Unauthorized", { status: 401 });
   }
 
-  return data as Message;
-}
-
-async function retrieveKnowledge(params: {
-  agentId: string;
-  conversationId: string;
-  query: string;
-}): Promise<string> {
-  const embedding = await generateQueryEmbedding(params.query);
-
-  const matches = await matchKnowledge({
-    agentId: params.agentId,
-    conversationId: params.conversationId,
-    embedding,
-    threshold: 0.45,
-    count: 6,
+  // 🔹 salvar mensagem do usuário
+  const savedUserMessage = await saveMessage({
+    conversationId,
+    userId: user.id,
+    role: "user",
+    content,
   });
 
-  if (!matches.length) {
-    return "";
-  }
+  const encoder = new TextEncoder();
 
-  const globalChunks = matches.filter((item) => item.scope === "global");
-  const conversationChunks = matches.filter(
-    (item) => item.scope === "conversation"
-  );
-
-  return [
-    globalChunks.length
-      ? `BASE DE CONHECIMENTO DO AGENTE:\n\n${globalChunks
-          .map((item) => item.content)
-          .join("\n\n---\n\n")}`
-      : null,
-    conversationChunks.length
-      ? `CONTEXTO ESPECÍFICO DESTA CONVERSA:\n\n${conversationChunks
-          .map((item) => item.content)
-          .join("\n\n---\n\n")}`
-      : null,
-  ]
-    .filter(Boolean)
-    .join("\n\n====================\n\n");
-}
-
-export async function POST(req: NextRequest) {
-  try {
-    if (!process.env.GEMINI_API_KEY) {
-      return new Response("GEMINI_API_KEY não configurada.", { status: 500 });
-    }
-
-    const supabase = await createClient();
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return new Response("Não autenticado.", { status: 401 });
-    }
-
-    const body = (await req.json()) as StreamRequestBody;
-    const conversationId = body?.conversationId;
-    const content = body?.content?.trim();
-
-    if (!conversationId || !content) {
-      return new Response("Payload inválido.", { status: 400 });
-    }
-
-    const ai = new GoogleGenAI({
-      apiKey: process.env.GEMINI_API_KEY,
-    });
-
-    const encoder = new TextEncoder();
-
-    const stream = new ReadableStream<Uint8Array>({
+  return new Response(
+    new ReadableStream({
       async start(controller) {
-        let fullResponse = "";
-
         try {
-          const conversation = await getConversationWithAgent(
-            conversationId,
-            user.id
+          // 🔹 enviar mensagem do usuário para o client
+          controller.enqueue(
+            encoder.encode(
+              sse({
+                type: "saved_user",
+                message: savedUserMessage,
+              })
+            )
           );
 
-          const agent = getAgentFromConversation(conversation.agents);
+          // 🔹 buscar histórico
+          const history = await getMessagesByConversationId(conversationId);
 
-          await saveMessage({
-            conversationId,
-            userId: user.id,
-            role: "user",
-            content,
-            metadata: null,
-          });
+          // 🔹 buscar agentes da conversa
+          const conversationAgents =
+            await listAgentsByConversation(conversationId);
 
-          const history = await getRecentMessagesByConversationId(
-            conversationId,
-            agent.max_history_messages || 12
-          );
+          // 🔹 fallback para agente principal
+          let agentsToUse = conversationAgents;
 
-          const knowledge = await retrieveKnowledge({
-            agentId: agent.id,
-            conversationId,
-            query: content,
-          });
+          if (agentsToUse.length === 0) {
+            const { data: conversation } = await supabase
+              .from("conversations")
+              .select("agents(*)")
+              .eq("id", conversationId)
+              .single();
 
-          const contents = mapMessagesToGemini(history);
+            const agent =
+              Array.isArray(conversation?.agents)
+                ? conversation.agents[0]
+                : conversation?.agents;
 
-          const responseStream = await ai.models.generateContentStream({
-            model: agent.model || "gemini-1.5-flash",
-            contents,
-            config: {
-              systemInstruction: buildSystemInstruction(agent, knowledge),
-              temperature: agent.temperature,
-            },
-          });
+            if (agent) {
+              agentsToUse = [agent];
+            }
+          }
 
-          for await (const chunk of responseStream) {
-            const token = extractChunkText(chunk);
+          const ai = getGeminiClient();
 
-            if (!token) continue;
+          // 🔥 LOOP MULTI-AGENTE
+          for (const agent of agentsToUse) {
+            let fullResponse = "";
 
-            fullResponse += token;
+            // 🔹 RAG
+            const embedding = await ai.models.embedContent({
+              model: "text-embedding-004",
+              contents: content,
+            });
+
+            const values = embedding.embeddings?.[0]?.values ?? [];
+
+            const matches = await matchKnowledge({
+              agentId: agent.id,
+              conversationId,
+              embedding: values,
+            });
+
+            const knowledge = matches
+              .map((m) => m.content)
+              .join("\n\n");
+
+            const systemInstruction = buildSystemInstruction(
+              agent,
+              knowledge
+            );
+
+            const contents = [
+              {
+                role: "user",
+                parts: [
+                  {
+                    text: systemInstruction,
+                  },
+                ],
+              },
+              ...history.map((msg) => ({
+                role: msg.role === "assistant" ? "model" : "user",
+                parts: [{ text: msg.content ?? "" }],
+              })),
+              {
+                role: "user",
+                parts: [{ text: content }],
+              },
+            ];
+
+            const stream = await ai.models.generateContentStream({
+              model: agent.model,
+              contents,
+              config: {
+                temperature: agent.temperature,
+              },
+            });
+
+            // 🔹 streaming
+            for await (const chunk of stream) {
+              const text = chunk.text ?? "";
+
+              if (!text) continue;
+
+              fullResponse += text;
+
+              controller.enqueue(
+                encoder.encode(
+                  sse({
+                    type: "token",
+                    token: text,
+                    agentId: agent.id,
+                  })
+                )
+              );
+            }
+
+            // 🔹 salvar resposta
+            const savedAssistantMessage = await saveMessage({
+              conversationId,
+              userId: null,
+              role: "assistant",
+              content: fullResponse,
+              metadata: {
+                agent_id: agent.id,
+                agent_name: agent.nome,
+              },
+            });
 
             controller.enqueue(
               encoder.encode(
                 sse({
-                  type: "token",
-                  token,
+                  type: "final",
+                  message: savedAssistantMessage,
                 })
               )
             );
           }
 
-          const savedAssistantMessage = await saveMessage({
-            conversationId,
-            userId: null,
-            role: "assistant",
-            content: fullResponse,
-            metadata: {
-              provider: "gemini",
-              model: agent.model || "gemini-1.5-flash",
-            },
-          });
-
-          controller.enqueue(
-            encoder.encode(
-              sse({
-                type: "final",
-                message: savedAssistantMessage,
-              })
-            )
-          );
-
-          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.enqueue(encoder.encode(sse("[DONE]")));
           controller.close();
         } catch (error) {
-          const message =
-            error instanceof Error ? error.message : "Erro interno";
+          console.error(error);
 
           controller.enqueue(
             encoder.encode(
               sse({
                 type: "error",
-                error: message,
+                error: "Erro ao gerar resposta.",
               })
             )
           );
@@ -316,19 +253,13 @@ export async function POST(req: NextRequest) {
           controller.close();
         }
       },
-    });
-
-    return new Response(stream, {
+    }),
+    {
       headers: {
-        "Content-Type": "text/event-stream; charset=utf-8",
-        "Cache-Control": "no-cache, no-transform",
+        "Content-Type": "text/event-stream",
         Connection: "keep-alive",
+        "Cache-Control": "no-cache",
       },
-    });
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Erro interno na rota";
-
-    return new Response(message, { status: 500 });
-  }
+    }
+  );
 }
