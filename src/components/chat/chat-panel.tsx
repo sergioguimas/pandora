@@ -262,8 +262,17 @@ export function ChatPanel({
                 type: "token";
                 token: string;
                 agentId?: string;
-                agentName?: string;
-              }
+                agentName?: string; }
+            | {
+                type: "agent_call";
+                fromAgentId: string;
+                fromAgentName: string;
+                toAgentId: string;
+                toAgentName: string;
+                reason: string | null; }
+            | {
+                type: "orchestration_plan";
+                agents: Array<{ id: string; name: string }>; }
             | { type: "saved_user"; message: Message }
             | { type: "final"; message?: Message }
             | { type: "error"; error: string };
@@ -316,6 +325,54 @@ export function ChatPanel({
                 },
               ];
             });
+
+            continue;
+          }
+
+          if (parsed.type === "agent_call") {
+            setLocalMessages((prev) => [
+              ...prev,
+              {
+                id: `temp-agent-call-${crypto.randomUUID()}`,
+                conversation_id: conversationId,
+                user_id: null,
+                role: "system",
+                content: `${parsed.fromAgentName} chamou ${parsed.toAgentName}${
+                  parsed.reason ? `: ${parsed.reason}` : "."
+                }`,
+                metadata: {
+                  type: "agent_call",
+                  from_agent_id: parsed.fromAgentId,
+                  from_agent_name: parsed.fromAgentName,
+                  to_agent_id: parsed.toAgentId,
+                  to_agent_name: parsed.toAgentName,
+                  reason: parsed.reason,
+                },
+                created_at: new Date().toISOString(),
+              },
+            ]);
+
+            continue;
+          }
+
+          if (parsed.type === "orchestration_plan") {
+            setLocalMessages((prev) => [
+              ...prev,
+              {
+                id: `temp-orchestration-plan-${crypto.randomUUID()}`,
+                conversation_id: conversationId,
+                user_id: null,
+                role: "system",
+                content: `Orquestrador definiu a ordem: ${parsed.agents
+                  .map((agent, index) => `#${index + 1} ${agent.name}`)
+                  .join(" → ")}`,
+                metadata: {
+                  type: "orchestration_plan",
+                  agents: parsed.agents,
+                },
+                created_at: new Date().toISOString(),
+              },
+            ]);
 
             continue;
           }

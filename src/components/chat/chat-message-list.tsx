@@ -91,7 +91,6 @@ export function ChatMessageList({
             (item) => item.id === message.user_id
           );
 
-          // 🔥 MULTI-AGENTE
           const metadata = (message.metadata ?? {}) as Record<string, any>;
           const isSynthesis = isAssistant && metadata.agent_id === "pandora-synthesis";
 
@@ -125,6 +124,25 @@ export function ChatMessageList({
           const isEndOfAgentBlock =
             isAssistant &&
             (!nextMessage || nextMessage.role === "user");
+          
+          if (message.role === "system") {
+            const isAgentCall = message.metadata?.type === "agent_call";
+
+            return (
+              <div key={message.id} className="my-3 flex justify-center">
+                <div
+                  className={cn(
+                    "rounded-full border px-4 py-2 text-xs font-medium",
+                    isAgentCall
+                      ? "border-primary/30 bg-primary/10 text-primary"
+                      : "border-border/60 bg-card/70 text-muted-foreground"
+                  )}
+                >
+                  {message.content}
+                </div>
+              </div>
+            );
+          }
 
           return (
             <div 
