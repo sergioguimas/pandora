@@ -107,11 +107,23 @@ export default async function ChatAgentPage({
 
   const todosAgents = await getAllAgents();
 
-  let agentesFinal = agentsDaConversa;
-
-  if (agentesFinal.length === 0) {
-    agentesFinal = [agent];
-  }
+  const agentesFinal =
+  agentsDaConversa.length > 0
+    ? agentsDaConversa
+    : [
+        {
+          conversation_agent_id: `principal-${agent.id}`,
+          ordem: 1,
+          id: agent.id,
+          nome: agent.nome,
+          descricao: agent.descricao,
+          prompt_base: agent.prompt_base,
+          provider: agent.provider,
+          model: agent.model,
+          temperature: agent.temperature,
+          max_history_messages: agent.max_history_messages,
+        },
+      ];
 
   return (
     <main className="flex h-screen overflow-hidden bg-background">

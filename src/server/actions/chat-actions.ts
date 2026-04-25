@@ -6,6 +6,7 @@ import { getConversationWithAgent, createConversationForAgent, updateConversatio
 import { getRecentMessagesByConversationId } from "@/server/repositories/messages-repository";
 import { generateAgentResponse } from "@/server/services/ai/generate-agent-response";
 import { addConversationParticipant, removeConversationParticipant, isConversationOwner } from "@/server/repositories/conversation-participants-repository";
+import { reorderConversationAgents } from "@/server/repositories/conversation-agents-repository";
 import { redirect } from "next/navigation";
 
 
@@ -303,4 +304,59 @@ export async function removeConversationAgentAction(formData: FormData) {
   }
 
   revalidatePath(`/chat/${agentSlug}`);
+}
+
+export async function moveConversationAgentAction(formData: FormData) {
+  const conversationId = String(formData.get("conversationId") ?? "");
+  const agentSlug = String(formData.get("agentSlug") ?? "");
+  const agentId = String(formData.get("agentId") ?? "");
+  const direction = String(formData.get("direction") ?? "") as "up" | "down";
+
+  const orderedAgentIds = String(formData.get("orderedAgentIds") ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) throw new Error("Usuário não autenticado.");
+
+  const owner = await isConversationOwner({
+    conversationId,
+    userId: user.id,
+  });
+
+  if (!owner) {
+    throw new Error("Apenas o dono pode reordenar agentes.");
+  }
+
+  const currentIndex = orderedAgentIds.indexOf(agentId);
+
+  if (currentIndex < 0) {
+    throw new Error("Agente não encontrado na ordenação.");
+  }
+
+  const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+
+  if (targetIndex < 0 || targetIndex >= orderedAgentIds.length) {
+    return;
+  }
+
+  const nextOrder = [...orderedAgentIds];
+
+  const current = nextOrder[currentIndex];
+  nextOrder[currentIndex] = nextOrder[targetIndex];
+  nextOrder[targetIndex] = current;
+
+  await reorderConversationAgents({
+    conversationId,
+    orderedAgentIds: nextOrder,
+  });
+
+  revalidatePath(`/chat/${agentSlug}`);
+  revalidatePath("/chat");
 }
