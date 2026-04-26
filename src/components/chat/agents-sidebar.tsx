@@ -30,6 +30,8 @@ export function AgentsSidebar({ agents, activeSlug }: AgentsSidebarProps) {
       return (
         agent.nome.toLowerCase().includes(normalized) ||
         (agent.descricao ?? "").toLowerCase().includes(normalized) ||
+        (agent.category ?? "").toLowerCase().includes(normalized) ||
+        agent.tags.some((tag) => tag.toLowerCase().includes(normalized)) ||
         (agent.last_message_preview ?? "").toLowerCase().includes(normalized)
       );
     });
@@ -44,13 +46,13 @@ export function AgentsSidebar({ agents, activeSlug }: AgentsSidebarProps) {
             setCreateOpen(true);
             setOpen(false);
           }}
-          className="h-11 w-full rounded-2xl bg-white text-sm font-semibold text-[#020817] hover:bg-white/90"
+          className="h-11 w-full rounded-lg bg-white text-sm font-semibold text-[#020817] hover:bg-white/90"
         >
           <Plus className="mr-2 h-4 w-4" />
           Nova conversa
         </Button>
 
-        <div className="relative group">
+        <div className="group relative">
           <Search
             className={cn(
               "absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transition-colors duration-200",
@@ -62,20 +64,13 @@ export function AgentsSidebar({ agents, activeSlug }: AgentsSidebarProps) {
 
           <Input
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar por nome ou conteúdo..."
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Buscar agentes..."
             className={cn(
-              "h-11 rounded-2xl border-white/10 bg-white/5 pl-10 pr-14 text-sm text-white placeholder:text-white/35 transition-all",
-              "focus:border-white/20 focus:bg-white/8 focus:ring-4 focus:ring-white/5 outline-none"
+              "h-11 rounded-lg border-white/10 bg-white/5 pl-10 pr-4 text-sm text-white placeholder:text-white/35 transition-all",
+              "outline-none focus:border-white/20 focus:bg-white/8 focus:ring-4 focus:ring-white/5"
             )}
           />
-
-          {!query && (
-            <div className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 items-center gap-1 opacity-40 lg:flex">
-              <kbd className="text-[10px] font-sans text-white/60">⌘</kbd>
-              <kbd className="text-[10px] font-sans text-white/60">K</kbd>
-            </div>
-          )}
         </div>
       </div>
 
@@ -93,7 +88,7 @@ export function AgentsSidebar({ agents, activeSlug }: AgentsSidebarProps) {
             </div>
             <p className="text-sm font-medium text-white">Nenhum resultado</p>
             <p className="mt-1 text-xs text-white/50">
-              Não encontramos nenhum agente para "{query}"
+              Não encontramos nenhum agente para &quot;{query}&quot;.
             </p>
           </div>
         )}
@@ -117,7 +112,7 @@ export function AgentsSidebar({ agents, activeSlug }: AgentsSidebarProps) {
             side="left"
             className="w-[85vw] max-w-sm border-r border-white/10 bg-[#020817]/95 p-0 shadow-2xl backdrop-blur-2xl"
           >
-            <SheetTitle className="sr-only">Menu de Agentes</SheetTitle>
+            <SheetTitle className="sr-only">Menu de agentes</SheetTitle>
             {sidebarInner}
           </SheetContent>
         </Sheet>

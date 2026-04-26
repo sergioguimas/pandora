@@ -1,5 +1,6 @@
 "use client";
 
+import { Trash2 } from "lucide-react";
 import { deleteAgent } from "@/server/actions/agents-actions";
 
 type DeleteAgentButtonProps = {
@@ -28,9 +29,10 @@ export function DeleteAgentButton({
 
       <button
         type="submit"
-        className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-300 transition hover:bg-red-500/20"
+        className="inline-flex h-10 items-center gap-2 rounded-lg border border-red-400/20 bg-red-400/10 px-3 text-sm font-semibold text-red-200 transition hover:bg-red-400/15"
       >
-        Excluir agente
+        <Trash2 className="h-4 w-4" />
+        Excluir
       </button>
     </form>
   );

@@ -20,10 +20,10 @@ export function CreateConversationButton({
 
       <button
         type="submit"
-        className="inline-flex items-center gap-2 rounded-xl border border-border/60 bg-card/60 px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent"
+        className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-white px-3 text-sm font-semibold text-[#020817] transition hover:bg-white/90"
       >
         <Plus className="h-4 w-4" />
-        Nova conversa
+        Nova
       </button>
     </form>
   );

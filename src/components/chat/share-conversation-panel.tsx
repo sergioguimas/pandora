@@ -190,11 +190,6 @@ export function ShareConversationPanel({
     [members, participantIds]
   );
 
-  const conversationUrl =
-    typeof window !== "undefined"
-      ? `${window.location.origin}/chat/${agentSlug}?conversation=${conversationId}`
-      : `/chat/${agentSlug}?conversation=${conversationId}`;
-
   async function copyConversationLink() {
     const url = `${window.location.origin}/chat/${agentSlug}?conversation=${conversationId}`;
 
@@ -212,7 +207,7 @@ export function ShareConversationPanel({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex items-center gap-2 rounded-xl border border-border/40 bg-card/40 px-4 py-2 text-sm font-bold text-muted-foreground backdrop-blur-md transition-all hover:bg-accent hover:text-foreground active:scale-95 shadow-sm"
+        className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-bold text-white/70 shadow-sm backdrop-blur-md transition-all hover:bg-white/[0.08] hover:text-white active:scale-95"
       >
         <Users className="h-4 w-4" />
         Compartilhar
@@ -352,10 +347,10 @@ export function ShareConversationPanel({
 
                       <button
                         type="submit"
-                        disabled={!selectedUserId}
+                        disabled={!selectedUserId || loading}
                         className="w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        Adicionar participante
+                        {loading ? "Adicionando..." : "Adicionar participante"}
                       </button>
                     </form>
                   )}

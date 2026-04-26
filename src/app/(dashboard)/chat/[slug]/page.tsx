@@ -121,7 +121,7 @@ export default async function ChatAgentPage({
       ];
 
   return (
-    <main className="flex h-screen overflow-hidden bg-background">
+    <main className="flex h-screen overflow-hidden bg-[#050b16]">
       <ChatSidePanel
         agentSlug={agent.slug}
         agentName={agent.nome}
@@ -136,7 +136,7 @@ export default async function ChatAgentPage({
       />
 
       <section className="flex min-w-0 flex-1 flex-col">
-        <header className="border-b border-border/60 bg-card/40 px-4 py-4 backdrop-blur-xl md:px-6">
+        <header className="border-b border-white/10 bg-[#020817]/95 px-4 py-4 text-white backdrop-blur-xl md:px-6">
           <div className="flex items-center justify-between gap-4">
             <div className="flex min-w-0 items-center gap-3">
 

@@ -4,14 +4,14 @@ import { useMemo, useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
-  Trash2,
+  Blocks,
   BookOpen,
+  ChevronDown,
+  ChevronUp,
   FileText,
   MessageSquare,
   Search,
-  ChevronDown,
-  ChevronUp,
-  Blocks,
+  Trash2,
 } from "lucide-react";
 
 import { deleteKnowledgeAction } from "@/server/actions/knowledge-actions";
@@ -62,13 +62,13 @@ function statusLabel(status: KnowledgeDocumentListItem["status"]) {
 function statusClass(status: KnowledgeDocumentListItem["status"]) {
   switch (status) {
     case "ready":
-      return "border-emerald-500/20 bg-emerald-500/10 text-emerald-600";
+      return "border-emerald-300/20 bg-emerald-300/10 text-emerald-100";
     case "processing":
-      return "border-amber-500/20 bg-amber-500/10 text-amber-600";
+      return "border-amber-300/20 bg-amber-300/10 text-amber-100";
     case "error":
-      return "border-red-500/20 bg-red-500/10 text-red-500";
+      return "border-red-400/20 bg-red-400/10 text-red-200";
     default:
-      return "border-border bg-muted/40 text-muted-foreground";
+      return "border-white/10 bg-white/[0.04] text-white/45";
   }
 }
 
@@ -142,93 +142,72 @@ export function KnowledgeDocumentsList({
 
   function filterButtonClass(value: FilterValue) {
     return cn(
-      "rounded-full border px-3 py-1.5 text-xs font-medium transition",
+      "rounded-md border px-3 py-1.5 text-xs font-bold transition",
       filter === value
-        ? "border-primary/30 bg-primary/10 text-primary"
-        : "border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground"
+        ? "border-white bg-white text-[#020817]"
+        : "border-white/10 bg-white/[0.03] text-white/55 hover:bg-white/[0.08] hover:text-white"
     );
   }
 
   return (
-    <section className="space-y-4 rounded-3xl border border-border/60 bg-card/60 p-6 shadow-sm backdrop-blur-xl">
-      <div className="space-y-1">
-        <h3 className="text-base font-semibold text-foreground">
-          Conhecimentos cadastrados
-        </h3>
-        <p className="text-sm text-muted-foreground">
-          Visualize e gerencie a base usada pelo agente durante a recuperação semântica.
-        </p>
+    <section className="space-y-4 rounded-lg border border-white/10 bg-white/[0.04] p-5 shadow-2xl">
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-emerald-200">
+          <BookOpen className="h-5 w-5" />
+        </div>
+
+        <div>
+          <h3 className="text-base font-bold text-white">
+            Conhecimentos cadastrados
+          </h3>
+          <p className="mt-1 text-sm leading-5 text-white/50">
+            Visualize e gerencie a base usada pelo agente durante a recuperação
+            semântica.
+          </p>
+        </div>
       </div>
 
       <div className="relative">
-        <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
         <input
           type="text"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Buscar por título, conversa, fonte ou conteúdo..."
-          className="w-full rounded-2xl border border-border bg-background py-3 pl-11 pr-4 text-sm text-foreground outline-none transition focus:border-primary"
+          className="h-11 w-full rounded-lg border border-white/10 bg-[#020817]/70 py-3 pl-10 pr-4 text-sm text-white outline-none placeholder:text-white/35 transition focus:border-emerald-300/40 focus:ring-4 focus:ring-emerald-300/10"
         />
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => setFilter("all")}
-          className={filterButtonClass("all")}
-        >
+        <button type="button" onClick={() => setFilter("all")} className={filterButtonClass("all")}>
           Todos
         </button>
-        <button
-          type="button"
-          onClick={() => setFilter("global")}
-          className={filterButtonClass("global")}
-        >
+        <button type="button" onClick={() => setFilter("global")} className={filterButtonClass("global")}>
           Globais
         </button>
-        <button
-          type="button"
-          onClick={() => setFilter("space")}
-          className={filterButtonClass("space")}
-        >
+        <button type="button" onClick={() => setFilter("space")} className={filterButtonClass("space")}>
           Contextos
         </button>
-        <button
-          type="button"
-          onClick={() => setFilter("conversation")}
-          className={filterButtonClass("conversation")}
-        >
+        <button type="button" onClick={() => setFilter("conversation")} className={filterButtonClass("conversation")}>
           Conversas
         </button>
-        <button
-          type="button"
-          onClick={() => setFilter("ready")}
-          className={filterButtonClass("ready")}
-        >
+        <button type="button" onClick={() => setFilter("ready")} className={filterButtonClass("ready")}>
           Prontos
         </button>
-        <button
-          type="button"
-          onClick={() => setFilter("processing")}
-          className={filterButtonClass("processing")}
-        >
+        <button type="button" onClick={() => setFilter("processing")} className={filterButtonClass("processing")}>
           Processando
         </button>
-        <button
-          type="button"
-          onClick={() => setFilter("error")}
-          className={filterButtonClass("error")}
-        >
+        <button type="button" onClick={() => setFilter("error")} className={filterButtonClass("error")}>
           Com erro
         </button>
       </div>
 
       {documents.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border/70 px-4 py-8 text-center text-sm text-muted-foreground">
+        <div className="rounded-lg border border-dashed border-white/15 px-4 py-8 text-center text-sm text-white/45">
           Nenhum conhecimento cadastrado ainda.
         </div>
       ) : filteredDocuments.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border/70 px-4 py-8 text-center text-sm text-muted-foreground">
+        <div className="rounded-lg border border-dashed border-white/15 px-4 py-8 text-center text-sm text-white/45">
           Nenhum resultado encontrado para os filtros atuais.
         </div>
       ) : (
@@ -242,43 +221,43 @@ export function KnowledgeDocumentsList({
             return (
               <div
                 key={document.id}
-                className="flex flex-col gap-4 rounded-2xl border border-border/60 bg-background/70 p-4"
+                className="flex flex-col gap-4 rounded-lg border border-white/10 bg-[#020817]/55 p-4"
               >
                 <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                   <div className="min-w-0 flex-1 space-y-3">
                     <div className="flex flex-wrap items-start gap-3">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-card">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04]">
                         {document.scope === "conversation" ? (
-                          <MessageSquare className="h-4 w-4 text-primary" />
+                          <MessageSquare className="h-4 w-4 text-emerald-200" />
                         ) : document.scope === "space" ? (
-                          <Blocks className="h-4 w-4 text-primary" />
+                          <Blocks className="h-4 w-4 text-emerald-200" />
                         ) : (
-                          <BookOpen className="h-4 w-4 text-primary" />
+                          <BookOpen className="h-4 w-4 text-emerald-200" />
                         )}
                       </div>
 
                       <div className="min-w-0 flex-1">
-                        <h4 className="truncate text-sm font-semibold text-foreground">
+                        <h4 className="truncate text-sm font-bold text-white">
                           {document.titulo}
                         </h4>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-xs text-white/45">
                           {document.scope === "conversation"
-                          ? document.conversation_title || "Conversa vinculada"
-                          : document.scope === "space"
-                            ? "Conhecimento compartilhado do contexto"
-                            : "Conhecimento global do agente"}
+                            ? document.conversation_title || "Conversa vinculada"
+                            : document.scope === "space"
+                              ? "Conhecimento compartilhado do contexto"
+                              : "Conhecimento global do agente"}
                         </p>
                       </div>
                     </div>
 
                     <div className="flex flex-wrap gap-2">
-                      <span className="rounded-full border border-border bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+                      <span className="rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-bold text-white/55">
                         {scopeLabel(document.scope)}
                       </span>
 
                       <span
                         className={cn(
-                          "rounded-full border px-2.5 py-1 text-[11px] font-medium",
+                          "rounded-md border px-2.5 py-1 text-[11px] font-bold",
                           statusClass(document.status)
                         )}
                       >
@@ -286,19 +265,19 @@ export function KnowledgeDocumentsList({
                       </span>
 
                       {document.fonte ? (
-                        <span className="rounded-full border border-border bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+                        <span className="rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-bold text-white/55">
                           Fonte: {document.fonte}
                         </span>
                       ) : null}
 
-                      <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+                      <span className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-bold text-white/55">
                         <Blocks className="h-3.5 w-3.5" />
                         {document.chunks_count ?? 0} chunk
                         {(document.chunks_count ?? 0) === 1 ? "" : "s"}
                       </span>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-3 text-xs text-white/45">
                       <span className="inline-flex items-center gap-1">
                         <FileText className="h-3.5 w-3.5" />
                         Criado em{" "}
@@ -313,7 +292,7 @@ export function KnowledgeDocumentsList({
                     <button
                       type="button"
                       onClick={() => toggleExpanded(document.id)}
-                      className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent"
+                      className="inline-flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm font-semibold text-white/70 transition hover:bg-white/[0.08] hover:text-white"
                     >
                       {expanded ? (
                         <>
@@ -332,7 +311,7 @@ export function KnowledgeDocumentsList({
                       <input type="hidden" name="documentId" value={document.id} />
                       <button
                         type="submit"
-                        className="inline-flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-500 transition hover:bg-red-500/15"
+                        className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-400/20 bg-red-400/10 px-3 text-sm font-semibold text-red-200 transition hover:bg-red-400/15"
                       >
                         <Trash2 className="h-4 w-4" />
                         Excluir
@@ -342,14 +321,14 @@ export function KnowledgeDocumentsList({
                 </div>
 
                 {expanded ? (
-                  <div className="rounded-2xl border border-border/60 bg-card/50 px-4 py-3">
-                    <p className="whitespace-pre-wrap break-words text-sm leading-7 text-foreground/90">
+                  <div className="rounded-lg border border-white/10 bg-white/[0.04] px-4 py-3">
+                    <p className="whitespace-pre-wrap break-words text-sm leading-7 text-white/80">
                       {preview || "Nenhum preview disponível para este conhecimento."}
                     </p>
                   </div>
                 ) : preview ? (
-                  <div className="rounded-2xl border border-border/40 bg-card/30 px-4 py-3">
-                    <p className="whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">
+                  <div className="rounded-lg border border-white/10 bg-white/[0.025] px-4 py-3">
+                    <p className="whitespace-pre-wrap break-words text-sm leading-6 text-white/50">
                       {collapsedPreview}
                     </p>
                   </div>

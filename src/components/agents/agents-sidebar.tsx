@@ -1,42 +1,64 @@
 "use client";
 
 import Link from "next/link";
+import { Bot, Cpu, ShieldAlert, ShieldCheck, Settings2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Agent } from "@/types/database";
-import { Settings2, Cpu, ShieldCheck, ShieldAlert } from "lucide-react";
 
 type AgentsSidebarProps = {
   agents: Agent[];
   selectedSlug?: string;
 };
 
-export function AgentsSidebar({
-  agents,
-  selectedSlug,
-}: AgentsSidebarProps) {
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+}
+
+export function AgentsSidebar({ agents, selectedSlug }: AgentsSidebarProps) {
+  const activeCount = agents.filter((agent) => agent.ativo).length;
+
   return (
-    <aside className="w-full max-w-[320px] lg:max-w-sm border-r border-border/50 bg-card/30 backdrop-blur-xl flex flex-col h-full shadow-2xl">
-      {/* Header do Painel Administrativo */}
-      <div className="px-6 py-8 border-b border-border/40 bg-gradient-to-b from-primary/5 to-transparent">
-        <div className="flex items-center gap-2 mb-2">
-          <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
+    <aside className="hidden h-full w-full max-w-[320px] flex-col border-r border-white/10 bg-[#020817] text-white shadow-2xl md:flex lg:max-w-sm">
+      <div className="border-b border-white/10 px-5 py-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-emerald-300/80">
+              Controle
+            </p>
+            <h1 className="mt-1 text-xl font-bold tracking-tight">Agentes</h1>
+            <p className="mt-1 text-xs leading-5 text-white/55">
+              Configure identidade, prompts e conhecimento dos especialistas.
+            </p>
+          </div>
+
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-white/75">
             <Settings2 className="h-4 w-4" />
           </div>
-          <p className="text-[11px] font-black uppercase tracking-[0.2em] text-primary/80">
-            Painel de Controle
-          </p>
         </div>
-        
-        <h1 className="text-2xl font-black tracking-tighter text-foreground">
-          Agentes
-        </h1>
-        <p className="mt-2 text-xs font-medium leading-relaxed text-muted-foreground/80">
-          Gerencie o comportamento, as permissões e a identidade das inteligências disponíveis.
-        </p>
+
+        <div className="mt-5 grid grid-cols-2 gap-2">
+          <div className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-white/45">
+              Total
+            </p>
+            <p className="mt-1 text-lg font-black">{agents.length}</p>
+          </div>
+
+          <div className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-white/45">
+              Ativos
+            </p>
+            <p className="mt-1 text-lg font-black">{activeCount}</p>
+          </div>
+        </div>
       </div>
 
-      {/* Lista de Agentes para Edição */}
-      <div className="flex-1 overflow-y-auto py-4 px-3 space-y-2 custom-scrollbar">
+      <div className="custom-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto px-4 py-4">
         {agents.map((agent) => {
           const isActive = agent.slug === selectedSlug;
 
@@ -45,68 +67,53 @@ export function AgentsSidebar({
               key={agent.id}
               href={`/agentes?slug=${agent.slug}`}
               className={cn(
-                "group relative flex items-start gap-4 rounded-2xl px-4 py-5 transition-all duration-300",
-                "hover:bg-accent/50",
-                isActive 
-                  ? "bg-primary/10 shadow-sm ring-1 ring-primary/20" 
-                  : "bg-transparent border border-transparent"
+                "group relative block rounded-lg border px-3 py-3 transition",
+                isActive
+                  ? "border-white/20 bg-white/[0.09]"
+                  : "border-transparent hover:border-white/10 hover:bg-white/[0.04]"
               )}
             >
-              {/* Avatar Dinâmico */}
-              <div
-                className={cn(
-                  "flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-xs font-black transition-all duration-500 shadow-inner",
-                  isActive
-                    ? "bg-primary text-primary-foreground rotate-3 scale-110 shadow-lg shadow-primary/20"
-                    : "bg-secondary text-muted-foreground group-hover:bg-background group-hover:text-primary group-hover:-rotate-2"
-                )}
-              >
-                {agent.nome.slice(0, 2).toUpperCase()}
-              </div>
+              <div className="flex items-start gap-3">
+                <div
+                  className={cn(
+                    "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border text-xs font-black transition",
+                    isActive
+                      ? "border-white bg-white text-[#020817]"
+                      : "border-white/10 bg-white/[0.04] text-white"
+                  )}
+                >
+                  {getInitials(agent.nome) || <Bot className="h-4 w-4" />}
+                </div>
 
-              {/* Informações do Agente */}
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <p className={cn(
-                    "truncate text-sm font-bold tracking-tight transition-colors",
-                    isActive ? "text-primary" : "text-foreground group-hover:text-primary"
-                  )}>
-                    {agent.nome}
-                  </p>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-white">
+                        {agent.nome}
+                      </p>
+                      <p className="mt-0.5 truncate text-xs font-medium text-emerald-100/55">
+                        {agent.category || "Agente"}
+                      </p>
+                    </div>
 
-                  {/* Indicador de Status Refinado */}
-                  <div className="flex items-center">
                     {agent.ativo ? (
-                      <ShieldCheck className={cn(
-                        "h-4 w-4 transition-all",
-                        isActive ? "text-primary animate-pulse" : "text-emerald-500/50 group-hover:text-emerald-500"
-                      )} />
+                      <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-200/75" />
                     ) : (
-                      <ShieldAlert className="h-4 w-4 text-zinc-400/50 group-hover:text-zinc-500" />
+                      <ShieldAlert className="h-4 w-4 shrink-0 text-white/30" />
                     )}
                   </div>
-                </div>
 
-                <p className={cn(
-                  "line-clamp-2 text-[13px] font-medium leading-snug transition-colors",
-                  isActive ? "text-primary/70" : "text-muted-foreground group-hover:text-muted-foreground/80"
-                )}>
-                  {agent.descricao ?? "Nenhuma descrição técnica definida para este agente."}
-                </p>
-                
-                {/* Badge de Modelo (Opcional, mas corporativo) */}
-                <div className="mt-3 flex items-center gap-1.5">
-                  <Cpu className="h-3 w-3 text-muted-foreground/40" />
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/40">
-                    {agent.model || "Default Model"}
-                  </span>
+                  <p className="mt-2 line-clamp-2 text-xs leading-5 text-white/45">
+                    {agent.descricao ||
+                      "Nenhuma descrição técnica definida para este agente."}
+                  </p>
+
+                  <div className="mt-3 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-white/35">
+                    <Cpu className="h-3 w-3" />
+                    <span className="truncate">{agent.model || "Modelo padrão"}</span>
+                  </div>
                 </div>
               </div>
-
-              {/* Indicador Lateral Ativo */}
-              {isActive && (
-                <div className="absolute left-0 top-1/2 -translate-y-1/2 h-8 w-1 bg-primary rounded-r-full shadow-[2px_0_10px_rgba(16,185,129,0.5)]" />
-              )}
             </Link>
           );
         })}
