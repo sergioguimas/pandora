@@ -16,9 +16,15 @@ type ConversationOption = {
   titulo: string | null;
 };
 
+type KnowledgeSpaceOption = {
+  id: string;
+  nome: string;
+};
+
 type AgentsPageProps = {
   agents: Agent[];
   selectedAgent: Agent | null;
+  knowledgeSpaces: KnowledgeSpaceOption[];
   conversations: ConversationOption[];
   knowledgeDocuments: KnowledgeDocumentListItem[];
 };
@@ -27,6 +33,7 @@ export function AgentsPage({
   agents,
   selectedAgent,
   conversations,
+  knowledgeSpaces,
   knowledgeDocuments,
 }: AgentsPageProps) {
   return (
@@ -43,6 +50,7 @@ export function AgentsPage({
               <div className="hidden h-10 w-10 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary sm:flex">
                 <Settings2 className="h-5 w-5" />
               </div>
+
               <div>
                 <h1 className="text-xl font-bold leading-none tracking-tight text-foreground">
                   Gestão de Agentes
@@ -78,12 +86,17 @@ export function AgentsPage({
               key={selectedAgent.id}
               className="mx-auto flex max-w-5xl flex-col gap-8 px-8 py-10 animate-in fade-in slide-in-from-bottom-4 duration-500"
             >
-              <AgentEditorPanel agent={selectedAgent} />
+              <AgentEditorPanel
+                agent={selectedAgent}
+                knowledgeSpaces={knowledgeSpaces}
+              />
 
               <KnowledgeIngestForm
                 agentId={selectedAgent.id}
                 agentName={selectedAgent.nome}
                 conversations={conversations}
+                knowledgeSpaces={knowledgeSpaces}
+                defaultKnowledgeSpaceId={selectedAgent.knowledge_space_id}
               />
 
               <KnowledgeDocumentsList documents={knowledgeDocuments} />

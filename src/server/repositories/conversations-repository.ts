@@ -128,7 +128,10 @@ export async function getConversationWithAgent(
       provider,
       model,
       temperature,
-      max_history_messages
+      max_history_messages,
+      knowledge_space_id,
+      category,
+      tags
     `)
     .eq("id", conversation.agent_id)
     .maybeSingle();

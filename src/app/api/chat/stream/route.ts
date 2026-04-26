@@ -17,6 +17,7 @@ type RuntimeAgent = {
   model: string;
   temperature: number;
   max_history_messages: number;
+  knowledge_space_id?: string | null;
   ordem?: number | null;
 };
 
@@ -409,6 +410,7 @@ export async function POST(req: NextRequest) {
           const matches = await matchKnowledge({
             agentId: agent.id,
             conversationId,
+            knowledgeSpaceId: agent.knowledge_space_id,
             embedding: queryEmbedding,
           });
 

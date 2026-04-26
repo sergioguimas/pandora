@@ -25,13 +25,23 @@ type KnowledgeDocumentsListProps = {
 type FilterValue =
   | "all"
   | "global"
+  | "space"
   | "conversation"
   | "ready"
   | "processing"
   | "error";
 
 function scopeLabel(scope: KnowledgeDocumentListItem["scope"]) {
-  return scope === "global" ? "Global" : "Conversa";
+  switch (scope) {
+    case "global":
+      return "Agente";
+    case "space":
+      return "Contexto";
+    case "conversation":
+      return "Conversa";
+    default:
+      return scope;
+  }
 }
 
 function statusLabel(status: KnowledgeDocumentListItem["status"]) {
@@ -87,6 +97,8 @@ function matchesFilter(
   switch (filter) {
     case "global":
       return document.scope === "global";
+    case "space":
+      return document.scope === "space";
     case "conversation":
       return document.scope === "conversation";
     case "ready":
@@ -176,6 +188,13 @@ export function KnowledgeDocumentsList({
         </button>
         <button
           type="button"
+          onClick={() => setFilter("space")}
+          className={filterButtonClass("space")}
+        >
+          Contextos
+        </button>
+        <button
+          type="button"
           onClick={() => setFilter("conversation")}
           className={filterButtonClass("conversation")}
         >
@@ -229,10 +248,12 @@ export function KnowledgeDocumentsList({
                   <div className="min-w-0 flex-1 space-y-3">
                     <div className="flex flex-wrap items-start gap-3">
                       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-card">
-                        {document.scope === "global" ? (
-                          <BookOpen className="h-4 w-4 text-primary" />
-                        ) : (
+                        {document.scope === "conversation" ? (
                           <MessageSquare className="h-4 w-4 text-primary" />
+                        ) : document.scope === "space" ? (
+                          <Blocks className="h-4 w-4 text-primary" />
+                        ) : (
+                          <BookOpen className="h-4 w-4 text-primary" />
                         )}
                       </div>
 
@@ -242,7 +263,9 @@ export function KnowledgeDocumentsList({
                         </h4>
                         <p className="text-xs text-muted-foreground">
                           {document.scope === "conversation"
-                            ? document.conversation_title || "Conversa vinculada"
+                          ? document.conversation_title || "Conversa vinculada"
+                          : document.scope === "space"
+                            ? "Conhecimento compartilhado do contexto"
                             : "Conhecimento global do agente"}
                         </p>
                       </div>

@@ -16,6 +16,7 @@ export default async function AgentesPageRoute({
 }: AgentesPageRouteProps) {
   const params = await searchParams;
   const agents = await getAllAgents();
+  
 
   if (agents.length === 0) {
     return (
@@ -23,6 +24,7 @@ export default async function AgentesPageRoute({
         agents={[]}
         selectedAgent={null}
         conversations={[]}
+        knowledgeSpaces={[]}
         knowledgeDocuments={[]}
       />
     );
@@ -41,6 +43,11 @@ export default async function AgentesPageRoute({
     data: { user },
   } = await supabase.auth.getUser();
 
+  const { data: knowledgeSpaces } = await supabase
+    .from("knowledge_spaces")
+    .select("id, nome")
+    .order("nome");
+
   const conversations =
     user && selectedAgent
       ? await listUserConversationsByAgent(user.id, selectedAgent.id)
@@ -55,6 +62,7 @@ export default async function AgentesPageRoute({
       agents={agents}
       selectedAgent={selectedAgent}
       conversations={conversations}
+      knowledgeSpaces={knowledgeSpaces ?? []}
       knowledgeDocuments={knowledgeDocuments}
     />
   );

@@ -10,6 +10,8 @@ export type IngestKnowledgeState = {
   error: string | null;
 };
 
+type KnowledgeScope = "global" | "conversation" | "space";
+
 export async function ingestKnowledgeAction(
   _prevState: IngestKnowledgeState,
   formData: FormData
@@ -32,10 +34,12 @@ export async function ingestKnowledgeAction(
     const agentId = String(formData.get("agentId") ?? "").trim();
     const titulo = String(formData.get("titulo") ?? "").trim();
     const content = String(formData.get("content") ?? "").trim();
-    const scope = String(formData.get("scope") ?? "").trim() as
-      | "global"
-      | "conversation";
+    const scope = String(formData.get("scope") ?? "").trim() as KnowledgeScope;
+
     const conversationIdRaw = String(formData.get("conversationId") ?? "").trim();
+    const knowledgeSpaceIdRaw = String(
+      formData.get("knowledgeSpaceId") ?? ""
+    ).trim();
 
     if (!agentId) {
       return { success: false, error: "AgentId não informado." };
@@ -49,7 +53,7 @@ export async function ingestKnowledgeAction(
       return { success: false, error: "Informe o conteúdo do conhecimento." };
     }
 
-    if (scope !== "global" && scope !== "conversation") {
+    if (!["global", "conversation", "space"].includes(scope)) {
       return { success: false, error: "Escopo inválido." };
     }
 
@@ -60,10 +64,18 @@ export async function ingestKnowledgeAction(
       };
     }
 
+    if (scope === "space" && !knowledgeSpaceIdRaw) {
+      return {
+        success: false,
+        error: "Selecione um espaço de conhecimento.",
+      };
+    }
+
     await ingestAgentKnowledge({
       agentId,
       scope,
       conversationId: scope === "conversation" ? conversationIdRaw : null,
+      knowledgeSpaceId: scope === "space" ? knowledgeSpaceIdRaw : null,
       titulo,
       content,
       fonte: "manual",

@@ -57,6 +57,21 @@ export async function updateAgent(
   const promptBase = String(formData.get("prompt_base") ?? "").trim();
   const ativoValue = String(formData.get("ativo") ?? "false");
 
+  const knowledgeSpaceIdRaw = String(
+    formData.get("knowledge_space_id") ?? ""
+  ).trim();
+
+  const category = String(formData.get("category") ?? "").trim();
+
+  const tagsRaw = String(formData.get("tags") ?? "").trim();
+
+  const tags = tagsRaw
+    ? tagsRaw
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter(Boolean)
+    : [];
+
   const ativo = ativoValue === "true" || ativoValue === "on";
 
   if (!id) {
@@ -89,6 +104,9 @@ export async function updateAgent(
       descricao: descricao || null,
       prompt_base: promptBase,
       ativo,
+      knowledge_space_id: knowledgeSpaceIdRaw || null,
+      category: category || null,
+      tags,
     })
     .eq("id", id);
 
@@ -124,6 +142,9 @@ export async function createAgent(): Promise<void> {
     model: "gemini-2.5-flash",
     temperature: 0.7,
     max_history_messages: 12,
+    category: null,
+    tags: [],
+    knowledge_space_id: "22222222-2222-2222-2222-222222222222",
   });
 
   if (error) {

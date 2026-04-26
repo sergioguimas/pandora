@@ -10,6 +10,9 @@ export type Agent = {
   model: string;
   temperature: number;
   max_history_messages: number;
+  knowledge_space_id: string | null;
+  category: string | null;
+  tags: string[];
   created_at: string;
   updated_at: string;
 };
@@ -52,6 +55,9 @@ export type ConversationWithAgent = Conversation & {
         model: string;
         temperature: number;
         max_history_messages: number;
+        knowledge_space_id: string | null;
+        category: string | null;
+        tags: string[];
       }
     | {
         id: string;

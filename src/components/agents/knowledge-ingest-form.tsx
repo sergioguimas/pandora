@@ -11,16 +11,27 @@ type ConversationOption = {
   titulo: string | null;
 };
 
+type KnowledgeScope = "global" | "conversation" | "space";
+
+type KnowledgeSpaceOption = {
+  id: string;
+  nome: string;
+};
+
 type KnowledgeIngestFormProps = {
   agentId: string;
   agentName: string;
   conversations?: ConversationOption[];
+  knowledgeSpaces?: KnowledgeSpaceOption[];
+  defaultKnowledgeSpaceId?: string | null;
 };
 
 export function KnowledgeIngestForm({
   agentId,
   agentName,
   conversations = [],
+  knowledgeSpaces = [],
+  defaultKnowledgeSpaceId = null,
 }: KnowledgeIngestFormProps) {
 
   const initialState: IngestKnowledgeState = {
@@ -33,7 +44,7 @@ export function KnowledgeIngestForm({
     initialState
   );
 
-  const [scope, setScope] = useState<"global" | "conversation">("global");
+  const [scope, setScope] = useState<KnowledgeScope>("global");
 
   const hasConversationOptions = useMemo(
     () => conversations.length > 0,
@@ -98,12 +109,11 @@ export function KnowledgeIngestForm({
             id={`scope-${agentId}`}
             name="scope"
             value={scope}
-            onChange={(event) =>
-              setScope(event.target.value as "global" | "conversation")
-            }
+            onChange={(event) => setScope(event.target.value as KnowledgeScope)}
             className="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:border-primary"
           >
             <option value="global">Global do agente</option>
+            <option value="space">Base do contexto/produto</option>
             <option value="conversation">Específico da conversa</option>
           </select>
         </div>
@@ -141,6 +151,43 @@ export function KnowledgeIngestForm({
           <p className="text-xs text-muted-foreground">
             Use esse modo para guardar contexto específico de um atendimento ou
             cliente.
+          </p>
+        </div>
+      ) : null}
+
+      {scope === "space" ? (
+        <div className="space-y-2">
+          <label
+            htmlFor={`knowledge-space-${agentId}`}
+            className="text-sm font-medium text-foreground"
+          >
+            Espaço de conhecimento
+          </label>
+
+          <select
+            id={`knowledge-space-${agentId}`}
+            name="knowledgeSpaceId"
+            className="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:border-primary disabled:cursor-not-allowed disabled:opacity-60"
+            required
+            disabled={knowledgeSpaces.length === 0}
+            defaultValue={defaultKnowledgeSpaceId ?? ""}
+          >
+            <option value="">
+              {knowledgeSpaces.length > 0
+                ? "Selecione um espaço"
+                : "Nenhum espaço disponível"}
+            </option>
+
+            {knowledgeSpaces.map((space) => (
+              <option key={space.id} value={space.id}>
+                {space.nome}
+              </option>
+            ))}
+          </select>
+
+          <p className="text-xs text-muted-foreground">
+            Use esse modo para compartilhar conhecimento entre vários agentes do mesmo produto,
+            fornecedor ou contexto.
           </p>
         </div>
       ) : null}

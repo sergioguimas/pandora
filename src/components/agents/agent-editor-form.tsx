@@ -7,8 +7,14 @@ import { updateAgent } from "@/server/actions/agents-actions";
 import { cn } from "@/lib/utils";
 import { Save, Info, Terminal, Settings2, CheckCircle2, AlertCircle } from "lucide-react";
 
+type KnowledgeSpaceOption = {
+  id: string;
+  nome: string;
+};
+
 type AgentEditorFormProps = {
   agent: Agent;
+  knowledgeSpaces?: KnowledgeSpaceOption[];
 };
 
 const initialState = {
@@ -47,7 +53,10 @@ function SaveButton() {
   );
 }
 
-export function AgentEditorForm({ agent }: AgentEditorFormProps) {
+export function AgentEditorForm({
+  agent,
+  knowledgeSpaces = [],
+}: AgentEditorFormProps) {
   const [state, formAction] = useActionState(updateAgent, initialState);
   const [tab, setTab] = useState<Tab>("geral");
   const [isAtivo, setIsAtivo] = useState(agent.ativo);
@@ -134,7 +143,14 @@ export function AgentEditorForm({ agent }: AgentEditorFormProps) {
 
       {/* Conteúdo das Abas */}
       <div className="flex-1 overflow-y-auto px-8 py-8 custom-scrollbar">
-        {tab === "geral" && (
+        <div
+          className={cn(
+            "max-w-2xl space-y-8",
+            tab === "geral"
+              ? "block animate-in fade-in slide-in-from-bottom-2 duration-300"
+              : "hidden"
+          )}
+        >
           <div className="max-w-2xl space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
             <div className="grid gap-3">
               <label className="text-sm font-bold text-foreground">Nome do Agente</label>
@@ -163,10 +179,74 @@ export function AgentEditorForm({ agent }: AgentEditorFormProps) {
                 Breve resumo das capacidades para consulta rápida da equipe.
               </p>
             </div>
-          </div>
-        )}
+            <div className="grid gap-3">
+              <label className="text-sm font-bold text-foreground">
+                Espaço de conhecimento
+              </label>
 
-        {tab === "prompt" && (
+              <select
+                name="knowledge_space_id"
+                defaultValue={agent.knowledge_space_id ?? ""}
+                className="h-12 rounded-xl border border-border bg-background/50 px-4 text-sm font-medium text-foreground outline-none transition-all focus:border-primary focus:ring-4 focus:ring-primary/10"
+              >
+                <option value="">Sem espaço vinculado</option>
+
+                {knowledgeSpaces.map((space) => (
+                  <option key={space.id} value={space.id}>
+                    {space.nome}
+                  </option>
+                ))}
+              </select>
+
+              <p className="text-[13px] text-muted-foreground italic">
+                Agentes no mesmo espaço podem compartilhar uma base de conhecimento comum.
+              </p>
+            </div>
+
+            <div className="grid gap-3">
+              <label className="text-sm font-bold text-foreground">
+                Categoria
+              </label>
+
+              <input
+                name="category"
+                defaultValue={agent.category ?? ""}
+                className="h-12 rounded-xl border border-border bg-background/50 px-4 text-sm font-medium text-foreground outline-none transition-all focus:border-primary focus:ring-4 focus:ring-primary/10"
+                placeholder="Ex.: Secullum, Moderno, Comercial, Financeiro"
+              />
+
+              <p className="text-[13px] text-muted-foreground italic">
+                Use para organizar o catálogo de agentes por produto, área ou função.
+              </p>
+            </div>
+
+            <div className="grid gap-3">
+              <label className="text-sm font-bold text-foreground">
+                Tags
+              </label>
+
+              <input
+                name="tags"
+                defaultValue={(agent.tags ?? []).join(", ")}
+                className="h-12 rounded-xl border border-border bg-background/50 px-4 text-sm font-medium text-foreground outline-none transition-all focus:border-primary focus:ring-4 focus:ring-primary/10"
+                placeholder="Ex.: vendas, planos, atendimento"
+              />
+
+              <p className="text-[13px] text-muted-foreground italic">
+                Separe as tags por vírgula.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div
+          className={cn(
+            "h-full flex-col gap-4",
+            tab === "prompt"
+              ? "flex animate-in fade-in slide-in-from-bottom-2 duration-300"
+              : "hidden"
+          )}
+        >
           <div className="h-full flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
             <div className="flex items-center justify-between">
               <label className="text-sm font-bold text-foreground">Prompt do Sistema (System Instructions)</label>
@@ -183,7 +263,7 @@ export function AgentEditorForm({ agent }: AgentEditorFormProps) {
               spellCheck={false}
             />
           </div>
-        )}
+        </div>
       </div>
 
       {/* Rodapé de Ações */}

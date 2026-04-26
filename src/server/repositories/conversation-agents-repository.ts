@@ -10,6 +10,9 @@ export type ConversationAgentItem = {
   model: string;
   temperature: number;
   max_history_messages: number;
+  knowledge_space_id: string | null;
+  category: string | null;
+  tags: string[];
   ordem: number;
 };
 
@@ -32,7 +35,10 @@ export async function listAgentsByConversation(
         provider,
         model,
         temperature,
-        max_history_messages
+        max_history_messages,
+        knowledge_space_id,
+        category,
+        tags
       )
     `)
     .eq("conversation_id", conversationId)
@@ -60,6 +66,9 @@ export async function listAgentsByConversation(
         model: agent.model,
         temperature: agent.temperature,
         max_history_messages: agent.max_history_messages,
+        knowledge_space_id: agent.knowledge_space_id,
+        category: agent.category,
+        tags: agent.tags ?? [],
       };
     })
     .filter(Boolean) as ConversationAgentItem[];

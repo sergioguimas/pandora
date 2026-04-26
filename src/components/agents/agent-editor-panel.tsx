@@ -2,8 +2,14 @@ import type { Agent } from "@/types/database";
 import { AgentEditorForm } from "@/components/agents/agent-editor-form";
 import { DeleteAgentButton } from "@/components/agents/delete-agent-button";
 
+type KnowledgeSpaceOption = {
+  id: string;
+  nome: string;
+};
+
 type AgentEditorPanelProps = {
   agent: Agent;
+  knowledgeSpaces?: KnowledgeSpaceOption[];
 };
 
 export function AgentEditorPanel({ agent }: AgentEditorPanelProps) {
