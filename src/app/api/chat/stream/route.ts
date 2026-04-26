@@ -84,6 +84,19 @@ function normalizeText(value: string) {
     .trim();
 }
 
+function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message = "Tempo limite excedido."
+): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error(message)), timeoutMs);
+    }),
+  ]);
+}
+
 function findTargetAgent(params: {
   requestedAgent: string;
   availableAgents: RuntimeAgent[];
@@ -171,6 +184,12 @@ function buildSystemInstruction(
     "- Não invente dados.",
     "- Se faltar contexto suficiente, diga isso claramente.",
     "- Responda em português do Brasil.",
+    "- Antes de dizer que não possui uma informação, verifique o contexto da base de conhecimento fornecido nesta mensagem.",
+    "- Se o contexto trouxer qualquer dado relacionado à pergunta, responda com base nele.",
+    "- Não copie trechos longos da base de conhecimento.",
+    "- Resuma a informação em linguagem natural.",
+    "- Seja objetivo: responda primeiro em até 5 linhas e só detalhe se o usuário pedir.",
+    "- Para perguntas sobre valores, planos, preços, custos ou tabela, procure no contexto antes de negar a informação.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -357,16 +376,7 @@ export async function POST(req: NextRequest) {
           throw new Error("Nenhum agente disponível para responder.");
         }
 
-        const plannedAgents = await planAgentExecution({
-          ai,
-          model: agentsToUse[0]?.model ?? "gemini-2.0-flash",
-          content,
-          agents: agentsToUse,
-        });
-
-        const orchestrationLocked = plannedAgents.length > 0;
-
-        agentsToUse = plannedAgents;
+        const orchestrationLocked = agentsToUse.length > 1;
 
         if (agentsToUse.length > 1) {
           controller.enqueue(
@@ -410,8 +420,10 @@ export async function POST(req: NextRequest) {
           const matches = await matchKnowledge({
             agentId: agent.id,
             conversationId,
-            knowledgeSpaceId: agent.knowledge_space_id,
             embedding: queryEmbedding,
+            query: content,
+            threshold: 0.35,
+            count: 4,
           });
 
           const knowledge = matches.map((item) => item.content).join("\n\n");
@@ -456,26 +468,53 @@ export async function POST(req: NextRequest) {
             },
           ];
 
-          const responseStream = await ai.models.generateContentStream({
-            model: agent.model,
-            contents,
-            config: {
-              temperature: agent.temperature,
-            },
-          });
+          try {
+            fullResponse = await withTimeout(
+              (async () => {
+                const responseStream = await ai.models.generateContentStream({
+                  model: agent.model,
+                  contents,
+                  config: {
+                    temperature: agent.temperature,
+                    maxOutputTokens: 1200,
+                  },
+                });
 
-          for await (const chunk of responseStream) {
-            const text = chunk.text ?? "";
+                let accumulated = "";
 
-            if (!text) continue;
+                for await (const chunk of responseStream) {
+                  const text = chunk.text ?? "";
 
-            fullResponse += text;
+                  if (!text) continue;
+
+                  accumulated += text;
+
+                  controller.enqueue(
+                    encoder.encode(
+                      sse({
+                        type: "token",
+                        token: text,
+                        agentId: agent.id,
+                        agentName: agent.nome,
+                      })
+                    )
+                  );
+                }
+
+                return accumulated;
+              })(),
+              60000,
+              `Tempo limite excedido para o agente ${agent.nome}.`
+            );
+          } catch {
+            fullResponse =
+              "Não consegui concluir minha resposta dentro do tempo limite. Tente fazer a pergunta de forma mais direta ou dividir em partes.";
 
             controller.enqueue(
               encoder.encode(
                 sse({
                   type: "token",
-                  token: text,
+                  token: fullResponse,
                   agentId: agent.id,
                   agentName: agent.nome,
                 })
@@ -568,6 +607,9 @@ export async function POST(req: NextRequest) {
             "- Se algum agente trouxe informação mais específica, priorize essa informação.",
             "- Responda em português do Brasil.",
             "- Seja direto, mas completo.",
+            "- Responda em no máximo 8 linhas.",
+            "- Não reexplique o raciocínio dos agentes.",
+            "- Traga apenas a resposta consolidada final.",
             "",
             "PERGUNTA ORIGINAL DO USUÁRIO:",
             content,
@@ -579,31 +621,58 @@ export async function POST(req: NextRequest) {
             ),
           ].join("\n\n");
 
-          const synthesisStream = await ai.models.generateContentStream({
-            model: agentsToUse[0]?.model ?? "gemini-2.0-flash",
-            contents: [
-              {
-                role: "user",
-                parts: [{ text: synthesisInstruction }],
-              },
-            ],
-            config: {
-              temperature: 0.4,
-            },
-          });
+          try {
+            finalSynthesis = await withTimeout(
+              (async () => {
+                const synthesisStream = await ai.models.generateContentStream({
+                  model: agentsToUse[0]?.model ?? "gemini-2.0-flash",
+                  contents: [
+                    {
+                      role: "user",
+                      parts: [{ text: synthesisInstruction }],
+                    },
+                  ],
+                  config: {
+                    temperature: 0.4,
+                    maxOutputTokens: 900,
+                  },
+                });
 
-          for await (const chunk of synthesisStream) {
-            const text = chunk.text ?? "";
+                let accumulated = "";
 
-            if (!text) continue;
+                for await (const chunk of synthesisStream) {
+                  const text = chunk.text ?? "";
 
-            finalSynthesis += text;
+                  if (!text) continue;
+
+                  accumulated += text;
+
+                  controller.enqueue(
+                    encoder.encode(
+                      sse({
+                        type: "token",
+                        token: text,
+                        agentId: "pandora-synthesis",
+                        agentName: "Síntese Pandora",
+                      })
+                    )
+                  );
+                }
+
+                return accumulated;
+              })(),
+              60000,
+              "Tempo limite excedido na síntese final."
+            );
+          } catch {
+            finalSynthesis =
+              "Não consegui concluir a síntese final dentro do tempo limite. As respostas individuais dos agentes acima foram preservadas.";
 
             controller.enqueue(
               encoder.encode(
                 sse({
                   type: "token",
-                  token: text,
+                  token: finalSynthesis,
                   agentId: "pandora-synthesis",
                   agentName: "Síntese Pandora",
                 })

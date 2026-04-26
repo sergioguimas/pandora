@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type SetStateAction,
+} from "react";
 import type { Message } from "@/types/database";
 import { createClient } from "@/lib/supabase/client";
 import { ChatInputForm } from "@/components/chat/chat-input-form";
@@ -71,7 +77,7 @@ function mergeRealtimeMessage(
 
     next[equivalentTempIndex] = {
       ...newMessage,
-      isStreaming: next[equivalentTempIndex].isStreaming,
+      isStreaming: false,
     };
 
     return next;
@@ -88,13 +94,41 @@ export function ChatPanel({
   currentUserId,
   userProfiles,
   activeAgentsCount = 1,
-  orchestrationMode = "single",
 }: ChatPanelProps) {
-  const [localMessages, setLocalMessages] = useState<StreamMessage[]>(
-    messages as StreamMessage[]
-  );
+  const [localMessagesState, setLocalMessagesState] = useState<{
+    conversationId: string;
+    messages: StreamMessage[];
+  }>({
+    conversationId,
+    messages: messages as StreamMessage[],
+  });
 
   const [sending, setSending] = useState(false);
+
+  const localMessages =
+    localMessagesState.conversationId === conversationId
+      ? localMessagesState.messages
+      : (messages as StreamMessage[]);
+
+  const setLocalMessages = useCallback(
+    (updater: SetStateAction<StreamMessage[]>) => {
+      setLocalMessagesState((prev) => {
+        const currentMessages =
+          prev.conversationId === conversationId
+            ? prev.messages
+            : (messages as StreamMessage[]);
+
+        const nextMessages =
+          typeof updater === "function" ? updater(currentMessages) : updater;
+
+        return {
+          conversationId,
+          messages: nextMessages,
+        };
+      });
+    },
+    [conversationId, messages]
+  );
 
   const renderedMessages = useMemo(() => localMessages, [localMessages]);
 
@@ -111,10 +145,6 @@ export function ChatPanel({
     : isMultiAgent
       ? `Modo encadeado • ${activeAgentsCount} agentes ativos`
       : `Modo individual • ${agentName}`;
-
-  useEffect(() => {
-    setLocalMessages(messages as StreamMessage[]);
-  }, [conversationId, messages]);
 
   useEffect(() => {
     let active = true;
@@ -184,7 +214,7 @@ export function ChatPanel({
         cleanup();
       }
     };
-  }, [conversationId]);
+  }, [conversationId, setLocalMessages]);
 
   async function handleSendMessage(content: string) {
     const trimmed = content.trim();
@@ -198,15 +228,8 @@ export function ChatPanel({
       currentUserId
     );
 
-    const assistantMessage = createTempMessage(
-      "assistant",
-      "",
-      conversationId,
-      null
-    );
-
     setSending(true);
-    setLocalMessages((prev) => [...prev, userMessage, assistantMessage]);
+    setLocalMessages((prev) => [...prev, userMessage]);
 
     try {
       const response = await fetch("/api/chat/stream", {
@@ -229,7 +252,6 @@ export function ChatPanel({
       const decoder = new TextDecoder();
 
       let done = false;
-      let accumulated = "";
       let buffer = "";
 
       while (!done) {
@@ -254,6 +276,17 @@ export function ChatPanel({
           const payload = dataLines.join("\n");
 
           if (payload === "[DONE]") {
+            setLocalMessages((prev) =>
+              prev.map((message) =>
+                message.isStreaming
+                  ? {
+                      ...message,
+                      isStreaming: false,
+                    }
+                  : message
+              )
+            );
+
             continue;
           }
 
@@ -390,6 +423,21 @@ export function ChatPanel({
                   ? finalMessage.metadata
                   : {};
 
+              const existingRealIndex = prev.findIndex(
+                (message) => message.id === finalMessage.id
+              );
+
+              if (existingRealIndex >= 0) {
+                const next = [...prev];
+
+                next[existingRealIndex] = {
+                  ...finalMessage,
+                  isStreaming: false,
+                };
+
+                return next;
+              }
+
               const agentId = (metadata as Record<string, unknown>).agent_id;
 
               const tempId =
@@ -439,9 +487,23 @@ export function ChatPanel({
             content: `Erro: ${message}`,
             isStreaming: false,
           };
+
+          return next;
         }
 
-        return next;
+        return [
+          ...next,
+          {
+            id: `temp-error-${crypto.randomUUID()}`,
+            conversation_id: conversationId,
+            user_id: null,
+            role: "assistant",
+            content: `Erro: ${message}`,
+            metadata: null,
+            created_at: new Date().toISOString(),
+            isStreaming: false,
+          },
+        ];
       });
     } finally {
       setSending(false);

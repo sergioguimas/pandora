@@ -74,6 +74,57 @@ export async function listAgentsByConversation(
     .filter(Boolean) as ConversationAgentItem[];
 }
 
+export async function addAgentsToConversation(params: {
+  conversationId: string;
+  agentIds: string[];
+}) {
+  const existingAgents = await listAgentsByConversation(params.conversationId);
+  const existingIds = new Set(existingAgents.map((agent) => agent.id));
+
+  const newAgentIds = params.agentIds.filter(
+    (agentId) => !existingIds.has(agentId)
+  );
+
+  if (newAgentIds.length === 0) return;
+
+  const supabase = await createClient();
+
+  const rows = newAgentIds.map((agentId, index) => ({
+    conversation_id: params.conversationId,
+    agent_id: agentId,
+    ordem: existingAgents.length + index + 1,
+  }));
+
+  const { error } = await supabase.from("conversation_agents").insert(rows);
+
+  if (error) {
+    throw new Error(`Erro ao adicionar agentes à conversa: ${error.message}`);
+  }
+}
+
+export async function removeAgentFromConversation(params: {
+  conversationId: string;
+  agentId: string;
+}) {
+  const agents = await listAgentsByConversation(params.conversationId);
+
+  if (agents.length <= 1) {
+    throw new Error("A conversa precisa manter pelo menos um agente.");
+  }
+
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from("conversation_agents")
+    .delete()
+    .eq("conversation_id", params.conversationId)
+    .eq("agent_id", params.agentId);
+
+  if (error) {
+    throw new Error(`Erro ao remover agente da conversa: ${error.message}`);
+  }
+}
+
 export async function reorderConversationAgents(params: {
   conversationId: string;
   orderedAgentIds: string[];

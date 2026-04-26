@@ -1,12 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import type { AgentListItem } from "@/types/database";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { AgentsSidebarContent } from "@/components/chat/agents-sidebar-content";
 import { MobileSidebarTrigger } from "@/components/chat/mobile-sidebar-trigger";
+import { CreateConversationModal } from "@/components/chat/create-conversation-modal";
 import { cn } from "@/lib/utils";
 
 type AgentsSidebarProps = {
@@ -14,11 +16,9 @@ type AgentsSidebarProps = {
   activeSlug?: string;
 };
 
-export function AgentsSidebar({
-  agents,
-  activeSlug,
-}: AgentsSidebarProps) {
+export function AgentsSidebar({ agents, activeSlug }: AgentsSidebarProps) {
   const [open, setOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const [query, setQuery] = useState("");
 
   const filteredAgents = useMemo(() => {
@@ -37,7 +37,19 @@ export function AgentsSidebar({
 
   const sidebarInner = (
     <div className="flex h-full flex-col bg-[#020817] text-white">
-      <div className="border-b border-white/10 px-5 py-5">
+      <div className="space-y-3 border-b border-white/10 px-5 py-5">
+        <Button
+          type="button"
+          onClick={() => {
+            setCreateOpen(true);
+            setOpen(false);
+          }}
+          className="h-11 w-full rounded-2xl bg-white text-sm font-semibold text-[#020817] hover:bg-white/90"
+        >
+          <Plus className="mr-2 h-4 w-4" />
+          Nova conversa
+        </Button>
+
         <div className="relative group">
           <Search
             className={cn(
@@ -47,6 +59,7 @@ export function AgentsSidebar({
                 : "text-white/35 group-focus-within:text-white/70"
             )}
           />
+
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -56,6 +69,7 @@ export function AgentsSidebar({
               "focus:border-white/20 focus:bg-white/8 focus:ring-4 focus:ring-white/5 outline-none"
             )}
           />
+
           {!query && (
             <div className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 items-center gap-1 opacity-40 lg:flex">
               <kbd className="text-[10px] font-sans text-white/60">⌘</kbd>
@@ -108,6 +122,11 @@ export function AgentsSidebar({
           </SheetContent>
         </Sheet>
       </div>
+
+      <CreateConversationModal
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+      />
     </>
   );
 }

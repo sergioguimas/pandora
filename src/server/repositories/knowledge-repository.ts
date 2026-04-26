@@ -258,31 +258,117 @@ export async function deleteKnowledgeDocument(documentId: string) {
   }
 }
 
+function extractSearchTerms(text: string) {
+  return text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .split(/\s+/)
+    .map((term) => term.replace(/[^a-z0-9]/g, ""))
+    .filter((term) => term.length >= 4)
+    .slice(0, 8);
+}
+
+function scoreKeywordMatch(content: string, terms: string[]) {
+  const normalized = content
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  return terms.reduce((score, term) => {
+    return normalized.includes(term) ? score + 1 : score;
+  }, 0);
+}
+
 export async function matchKnowledge(params: {
   agentId: string;
   conversationId: string;
-  knowledgeSpaceId?: string | null;
   embedding: number[];
+  query?: string;
   threshold?: number;
   count?: number;
-}): Promise<KnowledgeMatch[]> {
+}) {
   const supabase = await createClient();
 
-  const { data, error } = await supabase.rpc("match_knowledge_chunks", {
-    query_embedding: params.embedding,
-    match_threshold: params.threshold ?? 0.75,
-    match_count: params.count ?? 5,
-    agent_id: params.agentId,
-    conversation_id: params.conversationId,
-    knowledge_space_id: params.knowledgeSpaceId ?? null,
+  const matchCount = params.count ?? 8;
+
+  const { data, error } = await supabase.rpc("match_agent_knowledge", {
+    p_agent_id: params.agentId,
+    p_conversation_id: params.conversationId,
+    p_query_embedding: params.embedding,
+    p_match_threshold: params.threshold ?? 0.35,
+    p_match_count: matchCount,
   });
 
   if (error) {
-    throw new Error(`Erro ao buscar conhecimento: ${error.message}`);
+    throw new Error("Erro ao buscar contexto semântico.");
   }
 
-  return ((data ?? []) as MatchKnowledgeRow[]).map((row) => ({
+  const semanticMatches = ((data ?? []) as MatchKnowledgeRow[]).map((row) => ({
     ...row,
     metadata: normalizeMetadata(row.metadata),
   }));
+
+  if (semanticMatches.length > 0 || !params.query?.trim()) {
+    return semanticMatches;
+  }
+
+  const terms = extractSearchTerms(params.query);
+
+  if (terms.length === 0) {
+    return semanticMatches;
+  }
+
+  const { data: fallbackData, error: fallbackError } = await supabase
+    .from("knowledge_chunks")
+    .select(
+      `
+      id,
+      document_id,
+      agent_id,
+      conversation_id,
+      scope,
+      chunk_index,
+      content,
+      metadata,
+      knowledge_documents!inner (
+        status,
+        titulo
+      )
+    `
+    )
+    .eq("agent_id", params.agentId)
+    .or(
+      `scope.eq.global,and(scope.eq.conversation,conversation_id.eq.${params.conversationId})`
+    )
+    .eq("knowledge_documents.status", "ready")
+    .limit(80);
+
+  if (fallbackError) {
+    throw new Error("Erro ao buscar fallback textual da base de conhecimento.");
+  }
+
+  return ((fallbackData ?? []) as any[])
+    .map((row) => {
+      const keywordScore = scoreKeywordMatch(row.content, terms);
+
+      return {
+        id: row.id,
+        document_id: row.document_id,
+        agent_id: row.agent_id,
+        conversation_id: row.conversation_id,
+        scope: row.scope,
+        chunk_index: row.chunk_index,
+        content: row.content,
+        metadata: normalizeMetadata({
+          ...(row.metadata ?? {}),
+          titulo: row.knowledge_documents?.titulo ?? null,
+          fallback: true,
+        }),
+        similarity: keywordScore / terms.length,
+      };
+    })
+    .filter((row) => row.similarity > 0)
+    .sort((a, b) => b.similarity - a.similarity)
+    .slice(0, matchCount);
 }
