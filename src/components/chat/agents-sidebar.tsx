@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Plus, Search } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Bot, MessageSquare, Plus, Search } from "lucide-react";
 import type { AgentListItem } from "@/types/database";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { AgentsSidebarContent } from "@/components/chat/agents-sidebar-content";
+import { ConversationsSidebarContent } from "@/components/chat/conversations-sidebar-content";
 import { MobileSidebarTrigger } from "@/components/chat/mobile-sidebar-trigger";
 import { CreateConversationModal } from "@/components/chat/create-conversation-modal";
 import { cn } from "@/lib/utils";
@@ -16,10 +17,41 @@ type AgentsSidebarProps = {
   activeSlug?: string;
 };
 
+type SidebarMode = "conversations" | "agents";
+
+export type ConversationSidebarItem = {
+  id: string;
+  titulo: string | null;
+  updated_at: string;
+  href: string;
+  primaryAgent: {
+    id: string;
+    slug: string;
+    nome: string;
+  };
+  agents: Array<{
+    id: string;
+    slug: string;
+    nome: string;
+    ordem: number;
+  }>;
+};
+
 export function AgentsSidebar({ agents, activeSlug }: AgentsSidebarProps) {
   const [open, setOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [mode, setMode] = useState<SidebarMode>("conversations");
+  const [conversations, setConversations] = useState<ConversationSidebarItem[]>(
+    []
+  );
+
+  useEffect(() => {
+    fetch("/api/conversations")
+      .then((res) => res.json())
+      .then((data) => setConversations(data.conversations ?? []))
+      .catch(() => setConversations([]));
+  }, [createOpen]);
 
   const filteredAgents = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -37,6 +69,22 @@ export function AgentsSidebar({ agents, activeSlug }: AgentsSidebarProps) {
     });
   }, [agents, query]);
 
+  const filteredConversations = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+
+    if (!normalized) return conversations;
+
+    return conversations.filter((conversation) => {
+      return (
+        (conversation.titulo ?? "").toLowerCase().includes(normalized) ||
+        conversation.primaryAgent.nome.toLowerCase().includes(normalized) ||
+        conversation.agents.some((agent) =>
+          agent.nome.toLowerCase().includes(normalized)
+        )
+      );
+    });
+  }, [conversations, query]);
+
   const sidebarInner = (
     <div className="flex h-full flex-col bg-[#020817] text-white">
       <div className="space-y-3 border-b border-white/10 px-5 py-5">
@@ -52,6 +100,36 @@ export function AgentsSidebar({ agents, activeSlug }: AgentsSidebarProps) {
           Nova conversa
         </Button>
 
+        <div className="grid grid-cols-2 gap-2 rounded-lg border border-white/10 bg-white/5 p-1">
+          <button
+            type="button"
+            onClick={() => setMode("conversations")}
+            className={cn(
+              "flex h-9 items-center justify-center gap-2 rounded-md text-xs font-bold transition",
+              mode === "conversations"
+                ? "bg-white text-[#020817]"
+                : "text-white/60 hover:text-white"
+            )}
+          >
+            <MessageSquare className="h-3.5 w-3.5" />
+            Conversas
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setMode("agents")}
+            className={cn(
+              "flex h-9 items-center justify-center gap-2 rounded-md text-xs font-bold transition",
+              mode === "agents"
+                ? "bg-white text-[#020817]"
+                : "text-white/60 hover:text-white"
+            )}
+          >
+            <Bot className="h-3.5 w-3.5" />
+            Agentes
+          </button>
+        </div>
+
         <div className="group relative">
           <Search
             className={cn(
@@ -65,7 +143,11 @@ export function AgentsSidebar({ agents, activeSlug }: AgentsSidebarProps) {
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Buscar agentes..."
+            placeholder={
+              mode === "conversations"
+                ? "Buscar conversas..."
+                : "Buscar agentes..."
+            }
             className={cn(
               "h-11 rounded-lg border-white/10 bg-white/5 pl-10 pr-4 text-sm text-white placeholder:text-white/35 transition-all",
               "outline-none focus:border-white/20 focus:bg-white/8 focus:ring-4 focus:ring-white/5"
@@ -75,7 +157,12 @@ export function AgentsSidebar({ agents, activeSlug }: AgentsSidebarProps) {
       </div>
 
       <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto">
-        {filteredAgents.length > 0 ? (
+        {mode === "conversations" ? (
+          <ConversationsSidebarContent
+            conversations={filteredConversations}
+            onNavigate={() => setOpen(false)}
+          />
+        ) : filteredAgents.length > 0 ? (
           <AgentsSidebarContent
             agents={filteredAgents}
             activeSlug={activeSlug}
@@ -88,7 +175,7 @@ export function AgentsSidebar({ agents, activeSlug }: AgentsSidebarProps) {
             </div>
             <p className="text-sm font-medium text-white">Nenhum resultado</p>
             <p className="mt-1 text-xs text-white/50">
-              Não encontramos nenhum agente para &quot;{query}&quot;.
+              Não encontramos nada para &quot;{query}&quot;.
             </p>
           </div>
         )}
@@ -112,7 +199,7 @@ export function AgentsSidebar({ agents, activeSlug }: AgentsSidebarProps) {
             side="left"
             className="w-[85vw] max-w-sm border-r border-white/10 bg-[#020817]/95 p-0 shadow-2xl backdrop-blur-2xl"
           >
-            <SheetTitle className="sr-only">Menu de agentes</SheetTitle>
+            <SheetTitle className="sr-only">Menu</SheetTitle>
             {sidebarInner}
           </SheetContent>
         </Sheet>

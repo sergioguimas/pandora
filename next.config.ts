@@ -5,4 +5,8 @@ const nextConfig: NextConfig = {
   reactCompiler: true,
 };
 
+module.exports = {
+  allowedDevOrigins: ['heterodoxly-unchastened-nichole.ngrok-free.dev'],
+}
+
 export default nextConfig;

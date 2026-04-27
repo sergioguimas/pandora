@@ -1,11 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 
 const DEFAULT_ORGANIZATION_ID = "11111111-1111-1111-1111-111111111111";
 
 export async function ensureUserInDefaultOrganization(userId: string) {
-  const supabase = await createClient();
-
-  const { data: existing, error: existingError } = await supabase
+  const { data: existing, error: existingError } = await supabaseAdmin
     .from("organization_members")
     .select("id")
     .eq("user_id", userId)
@@ -13,20 +12,28 @@ export async function ensureUserInDefaultOrganization(userId: string) {
     .maybeSingle();
 
   if (existingError) {
+    console.error(existingError);
     throw new Error("Erro ao verificar organização do usuário.");
   }
 
   if (existing) return;
 
-  const { error: insertError } = await supabase
+  const { error: insertError } = await supabaseAdmin
     .from("organization_members")
-    .insert({
-      organization_id: DEFAULT_ORGANIZATION_ID,
-      user_id: userId,
-      role: "member",
-    });
+    .upsert(
+      {
+        organization_id: DEFAULT_ORGANIZATION_ID,
+        user_id: userId,
+        role: "member",
+      },
+      {
+        onConflict: "organization_id,user_id",
+        ignoreDuplicates: true,
+      }
+    );
 
   if (insertError) {
+    console.error(insertError);
     throw new Error("Erro ao adicionar usuário à organização padrão.");
   }
 }
