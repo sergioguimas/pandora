@@ -1,0 +1,25 @@
+services:
+  pandora:
+    container_name: pandora
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    env_file:
+      - .env.production
+    networks:
+      - public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=public"
+
+      - "traefik.http.routers.pandora.rule=Host(`pandora.sgdev.cloud`)"
+      - "traefik.http.routers.pandora.entrypoints=websecure"
+      - "traefik.http.routers.pandora.tls=true"
+      - "traefik.http.routers.pandora.tls.certresolver=meuresolver"
+
+      - "traefik.http.services.pandora.loadbalancer.server.port=3000"
+
+networks:
+  public:
+    external: true
