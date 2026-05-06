@@ -10,6 +10,7 @@ export const runtime = "nodejs";
 
 type RuntimeAgent = {
   id: string;
+  slug?: string | null;
   nome: string;
   descricao: string | null;
   prompt_base: string;
@@ -37,8 +38,70 @@ type AgentAction = {
   reason?: string;
 };
 
+type ModelErrorCode =
+  | "MODEL_TEMPORARILY_UNAVAILABLE"
+  | "MODEL_TIMEOUT"
+  | "MODEL_RATE_LIMITED"
+  | "MODEL_STREAM_INTERRUPTED"
+  | "MODEL_UNKNOWN_ERROR";
+
+type ModelErrorInfo = {
+  code: ModelErrorCode;
+  status?: number;
+  message: string;
+  retryable: boolean;
+};
+
 function sse(data: unknown) {
   return `data: ${JSON.stringify(data)}\n\n`;
+}
+
+function sanitizeJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function getMetadata(message: Pick<Message, "metadata">) {
+  return (message.metadata ?? {}) as Record<string, unknown>;
+}
+
+function isFailedOrInvalidHistoryMessage(message: Message) {
+  const metadata = getMetadata(message);
+  const status = metadata.status;
+
+  return (
+    status === "failed" ||
+    status === "partial" ||
+    status === "superseded" ||
+    status === "streaming"
+  );
+}
+
+function shouldIncludeHistoryMessageForAgent(params: {
+  message: Message;
+  currentAgentId: string;
+  currentUserMessageId: string;
+  isMultiAgentChain: boolean;
+}) {
+  const { message, currentAgentId, currentUserMessageId, isMultiAgentChain } = params;
+
+  // A mensagem atual do usuário é adicionada no fim de `contents`, então evita duplicidade.
+  if (message.id === currentUserMessageId) return false;
+
+  if (isFailedOrInvalidHistoryMessage(message)) return false;
+
+  // Histórico do usuário é seguro para todos os agentes.
+  if (message.role === "user") return true;
+
+  if (message.role !== "assistant") return false;
+
+  const metadata = getMetadata(message);
+
+  // Em conversas encadeadas, não reaproveita respostas antigas de assistentes.
+  // Isso evita um agente usar valores/dados que vieram de outro agente em rodada anterior.
+  if (isMultiAgentChain) return false;
+
+  // Em conversa de agente único, mantém somente respostas antigas do mesmo agente.
+  return metadata.agent_id === currentAgentId;
 }
 
 function tryParseAgentAction(text: string): AgentAction | null {
@@ -97,6 +160,187 @@ function withTimeout<T>(
   ]);
 }
 
+class ModelGenerationError extends Error {
+  code: ModelErrorCode;
+  status?: number;
+  partialContent?: string;
+
+  constructor(params: {
+    message: string;
+    code: ModelErrorCode;
+    status?: number;
+    partialContent?: string;
+  }) {
+    super(params.message);
+    this.name = "ModelGenerationError";
+    this.code = params.code;
+    this.status = params.status;
+    this.partialContent = params.partialContent;
+  }
+}
+
+function getErrorStatus(error: unknown): number | undefined {
+  if (!error || typeof error !== "object") return undefined;
+
+  const maybeError = error as {
+    status?: unknown;
+    code?: unknown;
+    response?: { status?: unknown };
+    cause?: { status?: unknown };
+  };
+
+  const status =
+    maybeError.status ??
+    maybeError.response?.status ??
+    maybeError.cause?.status ??
+    maybeError.code;
+
+  if (typeof status === "number") return status;
+
+  if (typeof status === "string") {
+    const parsed = Number(status);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  return undefined;
+}
+
+function classifyModelError(error: unknown): ModelErrorInfo {
+  const status = getErrorStatus(error);
+  const rawMessage =
+    error instanceof Error ? error.message : "Erro ao gerar resposta.";
+
+  const lowerMessage = rawMessage.toLowerCase();
+
+  if (
+    status === 503 ||
+    lowerMessage.includes("503") ||
+    lowerMessage.includes("unavailable") ||
+    lowerMessage.includes("overloaded")
+  ) {
+    return {
+      code: "MODEL_TEMPORARILY_UNAVAILABLE",
+      status: 503,
+      retryable: true,
+      message:
+        "O provedor de IA está temporariamente indisponível. Tente novamente em instantes.",
+    };
+  }
+
+  if (
+    status === 429 ||
+    lowerMessage.includes("429") ||
+    lowerMessage.includes("rate limit")
+  ) {
+    return {
+      code: "MODEL_RATE_LIMITED",
+      status: 429,
+      retryable: true,
+      message:
+        "O provedor de IA limitou temporariamente as requisições. Tente novamente em instantes.",
+    };
+  }
+
+  if (status === 500 || status === 502 || status === 504) {
+    return {
+      code: "MODEL_TEMPORARILY_UNAVAILABLE",
+      status,
+      retryable: true,
+      message:
+        "O provedor de IA falhou temporariamente. Tente novamente em instantes.",
+    };
+  }
+
+  if (
+    lowerMessage.includes("tempo limite") ||
+    lowerMessage.includes("timeout") ||
+    (error instanceof Error && error.name === "AbortError")
+  ) {
+    return {
+      code: "MODEL_TIMEOUT",
+      status,
+      retryable: true,
+      message: "A resposta demorou mais que o esperado e foi interrompida.",
+    };
+  }
+
+  return {
+    code: "MODEL_UNKNOWN_ERROR",
+    status,
+    retryable: false,
+    message: rawMessage || "Erro ao gerar resposta.",
+  };
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isProbablyIncompleteAnswer(text: string) {
+  const trimmed = text.trim();
+
+  if (!trimmed) return true;
+  if (trimmed.length < 40) return true;
+
+  const suspiciousPatterns = [
+    /\|\s*$/,
+    /-\s*$/,
+    /:\s*$/,
+    /\bR\$\s*$/,
+    /\bOpção\s*$/i,
+    /\*\*Opção\s*$/i,
+    /\bPlano\s*$/i,
+    /\bCusto\s*$/i,
+    /\bQuantidade\s*$/i,
+    /\bSugestão de Venda\s*$/i,
+    /\bModelo\s*$/i,
+    /\bEquipamento\s*$/i,
+  ];
+
+  if (suspiciousPatterns.some((pattern) => pattern.test(trimmed))) {
+    return true;
+  }
+
+  const boldMarkerCount = (trimmed.match(/\*\*/g) ?? []).length;
+  if (boldMarkerCount % 2 !== 0) return true;
+
+  const codeFenceCount = (trimmed.match(/```/g) ?? []).length;
+  if (codeFenceCount % 2 !== 0) return true;
+
+  return false;
+}
+
+async function withRetryBeforeStreaming<T>(
+  fn: () => Promise<T>,
+  options?: {
+    retries?: number;
+    delaysMs?: number[];
+  }
+): Promise<T> {
+  const retries = options?.retries ?? 2;
+  const delaysMs = options?.delaysMs ?? [800, 2000];
+
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+
+      const classified = classifyModelError(error);
+
+      if (!classified.retryable || attempt >= retries) {
+        throw error;
+      }
+
+      await sleep(delaysMs[attempt] ?? 2000);
+    }
+  }
+
+  throw lastError;
+}
+
 function findTargetAgent(params: {
   requestedAgent: string;
   availableAgents: RuntimeAgent[];
@@ -130,20 +374,37 @@ async function saveMessage(params: {
 }): Promise<Message> {
   const supabase = await createClient();
 
+  const payload = sanitizeJson({
+    conversation_id: params.conversationId,
+    user_id: params.userId ?? null,
+    role: params.role,
+    content: params.content,
+    metadata: params.metadata ?? null,
+  });
+
   const { data, error } = await supabase
     .from("messages")
-    .insert({
-      conversation_id: params.conversationId,
-      user_id: params.userId ?? null,
-      role: params.role,
-      content: params.content,
-      metadata: params.metadata ?? null,
-    })
+    .insert(payload)
     .select("id, conversation_id, user_id, role, content, metadata, created_at")
     .single();
 
   if (error || !data) {
-    throw new Error("Erro ao salvar mensagem.");
+    console.error("Erro ao salvar mensagem no Supabase:", {
+      error,
+      payload: {
+        ...payload,
+        content:
+          payload.content.length > 500
+            ? `${payload.content.slice(0, 500)}...`
+            : payload.content,
+      },
+    });
+
+    throw new Error(
+      error?.message
+        ? `Erro ao salvar mensagem: ${error.message}`
+        : "Erro ao salvar mensagem."
+    );
   }
 
   return data as Message;
@@ -180,7 +441,10 @@ function buildSystemInstruction(
     "Use isso com moderação. Não use se conseguir responder bem sozinho.",
     "",
     "Regras:",
-    "- Priorize as informações fornecidas no contexto.",
+    "- Responda estritamente dentro do seu papel de agente.",
+    "- Use a base de conhecimento recebida nesta mensagem como fonte principal.",
+    "- Não use valores, preços, custos ou dados técnicos que não estejam na sua base de conhecimento ou no contexto da rodada atual.",
+    "- Se outro agente anterior trouxer informação fora do seu escopo, use apenas para entender o cenário, não para assumir autoridade sobre esses dados.",
     "- Não invente dados.",
     "- Se faltar contexto suficiente, diga isso claramente.",
     "- Responda em português do Brasil.",
@@ -204,6 +468,7 @@ async function getFallbackAgent(conversationId: string): Promise<RuntimeAgent | 
       `
       agents (
         id,
+        slug,
         nome,
         descricao,
         prompt_base,
@@ -317,6 +582,24 @@ async function planAgentExecution(params: {
   }
 }
 
+function buildClientOnlyMessage(params: {
+  id: string;
+  conversationId: string;
+  role: "assistant" | "system";
+  content: string;
+  metadata: Record<string, unknown>;
+}): Message {
+  return {
+    id: params.id,
+    conversation_id: params.conversationId,
+    user_id: null,
+    role: params.role,
+    content: params.content,
+    metadata: params.metadata,
+    created_at: new Date().toISOString(),
+  };
+}
+
 export async function POST(req: NextRequest) {
   const { conversationId, content } = await req.json();
 
@@ -357,7 +640,7 @@ export async function POST(req: NextRequest) {
           )
         );
 
-        const history = await getMessagesByConversationId(conversationId);
+        const history = (await getMessagesByConversationId(conversationId)) as Message[];
         const ai = getGeminiClient();
 
         const conversationAgents = await listAgentsByConversation(conversationId);
@@ -375,6 +658,10 @@ export async function POST(req: NextRequest) {
         if (agentsToUse.length === 0) {
           throw new Error("Nenhum agente disponível para responder.");
         }
+
+        // O planAgentExecution fica disponível para uso futuro, mas por enquanto mantemos a ordem fixa
+        // retornada por listAgentsByConversation para preservar a conversa encadeada.
+        void planAgentExecution;
 
         const orchestrationLocked = agentsToUse.length > 1;
 
@@ -416,23 +703,30 @@ export async function POST(req: NextRequest) {
           executedAgentIds.add(agent.id);
 
           let fullResponse = "";
+          let knowledge = "";
 
-          const matches = await matchKnowledge({
-            agentId: agent.id,
-            conversationId,
-            embedding: queryEmbedding,
-            query: content,
-            threshold: 0.35,
-            count: 4,
-          });
+          try {
+            const matches = await matchKnowledge({
+              agentId: agent.id,
+              conversationId,
+              embedding: queryEmbedding,
+              query: content,
+              threshold: 0.35,
+              count: 4,
+            });
 
-          const knowledge = matches.map((item) => item.content).join("\n\n");
+            knowledge = matches.map((item) => item.content).join("\n\n");
+          } catch (error) {
+            console.error("Erro ao consultar base de conhecimento:", {
+              agentId: agent.id,
+              agentName: agent.nome,
+              error,
+            });
 
-          const systemInstruction = buildSystemInstruction(
-            agent,
-            knowledge,
-            agentsToUse
-          );
+            knowledge = "";
+          }
+
+          const systemInstruction = buildSystemInstruction(agent, knowledge, agentsToUse);
 
           const chainContext = previousAgentResponses.length
             ? [
@@ -442,7 +736,7 @@ export async function POST(req: NextRequest) {
                     `#${responseIndex + 1} ${response.agentName}:\n${response.content}`
                 ),
                 "",
-                "Use essas respostas como contexto adicional. Você pode complementar, corrigir, validar ou discordar de forma objetiva, respeitando seu papel.",
+                "Use essas respostas como contexto adicional apenas quando estiverem dentro do seu papel. Você pode complementar, corrigir, validar ou discordar de forma objetiva.",
               ].join("\n\n")
             : "";
 
@@ -453,12 +747,25 @@ export async function POST(req: NextRequest) {
             .filter(Boolean)
             .join("\n");
 
+          const filteredHistory = history.filter((message) =>
+            shouldIncludeHistoryMessageForAgent({
+              message,
+              currentAgentId: agent.id,
+              currentUserMessageId: savedUserMessage.id,
+              isMultiAgentChain: orchestrationLocked,
+            })
+          );
+
+          const limitedHistory = filteredHistory.slice(
+            -(agent.max_history_messages ?? 12)
+          );
+
           const contents = [
             {
               role: "user" as const,
               parts: [{ text: finalSystemInstruction }],
             },
-            ...history.map((message) => ({
+            ...limitedHistory.map((message) => ({
               role: message.role === "assistant" ? ("model" as const) : ("user" as const),
               parts: [{ text: message.content ?? "" }],
             })),
@@ -468,99 +775,283 @@ export async function POST(req: NextRequest) {
             },
           ];
 
+          let generationFailed = false;
+          let generationPartial = false;
+          let generationError: ModelErrorInfo | null = null;
+
           try {
             fullResponse = await withTimeout(
               (async () => {
-                const responseStream = await ai.models.generateContentStream({
-                  model: agent.model,
-                  contents,
-                  config: {
-                    temperature: agent.temperature,
-                    maxOutputTokens: 1200,
-                  },
-                });
-
                 let accumulated = "";
+                let receivedAnyToken = false;
 
-                for await (const chunk of responseStream) {
-                  const text = chunk.text ?? "";
+                let responseStream;
 
-                  if (!text) continue;
-
-                  accumulated += text;
-
-                  controller.enqueue(
-                    encoder.encode(
-                      sse({
-                        type: "token",
-                        token: text,
-                        agentId: agent.id,
-                        agentName: agent.nome,
-                      })
-                    )
+                try {
+                  responseStream = await withRetryBeforeStreaming(
+                    () =>
+                      ai.models.generateContentStream({
+                        model: agent.model,
+                        contents,
+                        config: {
+                          temperature: agent.temperature,
+                          maxOutputTokens: 2000,
+                        },
+                      }),
+                    {
+                      retries: 2,
+                      delaysMs: [800, 2000],
+                    }
                   );
+                } catch (error) {
+                  const classified = classifyModelError(error);
+
+                  throw new ModelGenerationError({
+                    message: classified.message,
+                    code: classified.code,
+                    status: classified.status,
+                    partialContent: accumulated,
+                  });
+                }
+
+                try {
+                  for await (const chunk of responseStream) {
+                    const text = chunk.text ?? "";
+
+                    if (!text) continue;
+
+                    receivedAnyToken = true;
+                    accumulated += text;
+
+                    controller.enqueue(
+                      encoder.encode(
+                        sse({
+                          type: "token",
+                          token: text,
+                          agentId: agent.id,
+                          agentName: agent.nome,
+                        })
+                      )
+                    );
+                  }
+                } catch (error) {
+                  const classified = classifyModelError(error);
+
+                  throw new ModelGenerationError({
+                    message: receivedAnyToken
+                      ? "A resposta foi interrompida antes de terminar."
+                      : classified.message,
+                    code: receivedAnyToken
+                      ? "MODEL_STREAM_INTERRUPTED"
+                      : classified.code,
+                    status: classified.status,
+                    partialContent: accumulated,
+                  });
                 }
 
                 return accumulated;
               })(),
-              60000,
+              75000,
               `Tempo limite excedido para o agente ${agent.nome}.`
             );
-          } catch {
-            fullResponse =
-              "Não consegui concluir minha resposta dentro do tempo limite. Tente fazer a pergunta de forma mais direta ou dividir em partes.";
+
+            if (isProbablyIncompleteAnswer(fullResponse)) {
+              generationPartial = true;
+              generationError = {
+                code: "MODEL_STREAM_INTERRUPTED",
+                message: "A resposta parece incompleta. Recomenda-se tentar novamente.",
+                retryable: true,
+              };
+
+              controller.enqueue(
+                encoder.encode(
+                  sse({
+                    type: "agent_warning",
+                    agentId: agent.id,
+                    agentName: agent.nome,
+                    code: generationError.code,
+                    message: generationError.message,
+                    retryable: true,
+                  })
+                )
+              );
+            }
+          } catch (error) {
+            generationFailed = true;
+
+            if (error instanceof ModelGenerationError) {
+              generationError = {
+                code: error.code,
+                status: error.status,
+                message: error.message,
+                retryable: true,
+              };
+
+              fullResponse = error.partialContent?.trim() || "";
+              generationPartial = Boolean(fullResponse);
+            } else {
+              const classified = classifyModelError(error);
+
+              generationError = classified;
+              fullResponse = "";
+            }
+
+            const errorMessage = generationPartial
+              ? "\n\n> ⚠️ A resposta foi interrompida antes de terminar. Você pode tentar novamente."
+              : generationError.message;
 
             controller.enqueue(
               encoder.encode(
                 sse({
-                  type: "token",
-                  token: fullResponse,
+                  type: "agent_error",
                   agentId: agent.id,
                   agentName: agent.nome,
+                  code: generationError.code,
+                  status: generationError.status ?? null,
+                  message: generationError.message,
+                  retryable: generationError.retryable,
+                  partial: generationPartial,
                 })
               )
             );
+
+            if (!generationPartial) {
+              controller.enqueue(
+                encoder.encode(
+                  sse({
+                    type: "token",
+                    token: errorMessage,
+                    agentId: agent.id,
+                    agentName: agent.nome,
+                  })
+                )
+              );
+            }
+
+            fullResponse = generationPartial
+              ? `${fullResponse}${errorMessage}`
+              : errorMessage;
           }
 
           const action = tryParseAgentAction(fullResponse);
           const cleanResponse = removeActionJson(fullResponse);
 
-          const savedAssistantMessage = await saveMessage({
-            conversationId,
-            userId: null,
-            role: "assistant",
-            content: cleanResponse || fullResponse,
-            metadata: {
-              agent_id: agent.id,
-              agent_name: agent.nome,
-              orchestration: {
-                mode: "chain",
-                order: agent.ordem ?? index + 1,
-                dynamic_call: false,
-                previous_agents: previousAgentResponses.map((response) => ({
-                  agent_id: response.agentId,
-                  agent_name: response.agentName,
-                })),
-              },
+          const assistantMetadata = sanitizeJson({
+            agent_id: agent.id,
+            agent_slug: agent.slug ?? null,
+            agent_name: agent.nome,
+
+            status: generationFailed
+              ? "failed"
+              : generationPartial
+                ? "partial"
+                : "completed",
+
+            retryable: generationError?.retryable ?? false,
+
+            error: generationError
+              ? {
+                  code: generationError.code,
+                  status: generationError.status ?? null,
+                  message: generationError.message,
+                }
+              : null,
+
+            original_user_message_id: savedUserMessage.id,
+
+            orchestration: {
+              mode: "chain",
+              order: agent.ordem ?? index + 1,
+              dynamic_call: false,
+              previous_agents: previousAgentResponses.map((response) => ({
+                agent_id: response.agentId,
+                agent_name: response.agentName,
+              })),
             },
           });
+
+          let assistantMessage: Message;
+
+          try {
+            assistantMessage = await saveMessage({
+              conversationId,
+              userId: null,
+              role: "assistant",
+              content: cleanResponse || fullResponse,
+              metadata: assistantMetadata,
+            });
+          } catch (error) {
+            console.error("Falha ao persistir resposta do agente:", {
+              agentId: agent.id,
+              agentName: agent.nome,
+              error,
+            });
+
+            const persistedErrorMessage =
+              error instanceof Error ? error.message : "Erro ao salvar mensagem.";
+
+            assistantMessage = buildClientOnlyMessage({
+              id: `unsaved-${agent.id}-${Date.now()}`,
+              conversationId,
+              role: "assistant",
+              content: `${cleanResponse || fullResponse}\n\n> ⚠️ Esta resposta foi gerada, mas não foi salva no banco. Erro: ${persistedErrorMessage}`,
+              metadata: {
+                ...assistantMetadata,
+                status: "failed",
+                retryable: false,
+                error: {
+                  code: "MESSAGE_SAVE_FAILED",
+                  status: null,
+                  message: persistedErrorMessage,
+                },
+              },
+            });
+
+            controller.enqueue(
+              encoder.encode(
+                sse({
+                  type: "agent_error",
+                  agentId: agent.id,
+                  agentName: agent.nome,
+                  code: "MESSAGE_SAVE_FAILED",
+                  status: null,
+                  message: persistedErrorMessage,
+                  retryable: false,
+                  partial: false,
+                })
+              )
+            );
+          }
 
           controller.enqueue(
             encoder.encode(
               sse({
                 type: "final",
-                message: savedAssistantMessage,
+                message: assistantMessage,
               })
             )
           );
 
-          previousAgentResponses.push({
-            agentId: agent.id,
-            agentName: agent.nome,
-            content: cleanResponse || fullResponse,
-          });
+          if (!generationFailed && !generationPartial) {
+            previousAgentResponses.push({
+              agentId: agent.id,
+              agentName: agent.nome,
+              content: cleanResponse || fullResponse,
+            });
+          } else {
+            previousAgentResponses.push({
+              agentId: agent.id,
+              agentName: agent.nome,
+              content:
+                "Este agente não conseguiu concluir a resposta por falha temporária do provedor de IA.",
+            });
+          }
 
-          if (!orchestrationLocked && action?.action === "call_agent" && dynamicCalls < MAX_DYNAMIC_CALLS) {
+          if (
+            !orchestrationLocked &&
+            action?.action === "call_agent" &&
+            dynamicCalls < MAX_DYNAMIC_CALLS
+          ) {
             const targetAgent = findTargetAgent({
               requestedAgent: action.agent,
               availableAgents: agentsToUse,
@@ -605,6 +1096,7 @@ export async function POST(req: NextRequest) {
             "- Destaque os pontos principais.",
             "- Resolva conflitos entre agentes, se houver.",
             "- Se algum agente trouxe informação mais específica, priorize essa informação.",
+            "- Se um agente falhou, informe de forma discreta que aquela parte precisa ser tentada novamente ou revisada.",
             "- Responda em português do Brasil.",
             "- Seja direto, mas completo.",
             "- Responda em no máximo 8 linhas.",
@@ -621,22 +1113,32 @@ export async function POST(req: NextRequest) {
             ),
           ].join("\n\n");
 
+          let synthesisFailed = false;
+          let synthesisError: ModelErrorInfo | null = null;
+
           try {
             finalSynthesis = await withTimeout(
               (async () => {
-                const synthesisStream = await ai.models.generateContentStream({
-                  model: agentsToUse[0]?.model ?? "gemini-2.0-flash",
-                  contents: [
-                    {
-                      role: "user",
-                      parts: [{ text: synthesisInstruction }],
-                    },
-                  ],
-                  config: {
-                    temperature: 0.4,
-                    maxOutputTokens: 900,
-                  },
-                });
+                const synthesisStream = await withRetryBeforeStreaming(
+                  () =>
+                    ai.models.generateContentStream({
+                      model: agentsToUse[0]?.model ?? "gemini-2.0-flash",
+                      contents: [
+                        {
+                          role: "user",
+                          parts: [{ text: synthesisInstruction }],
+                        },
+                      ],
+                      config: {
+                        temperature: 0.4,
+                        maxOutputTokens: 2000,
+                      },
+                    }),
+                  {
+                    retries: 2,
+                    delaysMs: [800, 2000],
+                  }
+                );
 
                 let accumulated = "";
 
@@ -661,12 +1163,30 @@ export async function POST(req: NextRequest) {
 
                 return accumulated;
               })(),
-              60000,
+              75000,
               "Tempo limite excedido na síntese final."
             );
-          } catch {
+          } catch (error) {
+            synthesisFailed = true;
+            synthesisError = classifyModelError(error);
+
             finalSynthesis =
-              "Não consegui concluir a síntese final dentro do tempo limite. As respostas individuais dos agentes acima foram preservadas.";
+              "Não consegui concluir a síntese final por instabilidade temporária do provedor de IA. As respostas individuais dos agentes acima foram preservadas.";
+
+            controller.enqueue(
+              encoder.encode(
+                sse({
+                  type: "agent_error",
+                  agentId: "pandora-synthesis",
+                  agentName: "Síntese Pandora",
+                  code: synthesisError.code,
+                  status: synthesisError.status ?? null,
+                  message: synthesisError.message,
+                  retryable: synthesisError.retryable,
+                  partial: false,
+                })
+              )
+            );
 
             controller.enqueue(
               encoder.encode(
@@ -680,29 +1200,86 @@ export async function POST(req: NextRequest) {
             );
           }
 
-          const savedSynthesisMessage = await saveMessage({
-            conversationId,
-            userId: null,
-            role: "assistant",
-            content: finalSynthesis,
-            metadata: {
-              agent_id: "pandora-synthesis",
-              agent_name: "Síntese Pandora",
-              orchestration: {
-                mode: "synthesis",
-                source_agents: previousAgentResponses.map((response) => ({
-                  agent_id: response.agentId,
-                  agent_name: response.agentName,
-                })),
-              },
+          const synthesisMetadata = sanitizeJson({
+            agent_id: "pandora-synthesis",
+            agent_name: "Síntese Pandora",
+
+            status: synthesisFailed ? "failed" : "completed",
+            // Não habilita retry da síntese por enquanto, porque ela não existe na tabela agents.
+            retryable: false,
+            error: synthesisError
+              ? {
+                  code: synthesisError.code,
+                  status: synthesisError.status ?? null,
+                  message: synthesisError.message,
+                }
+              : null,
+
+            original_user_message_id: savedUserMessage.id,
+
+            orchestration: {
+              mode: "synthesis",
+              source_agents: previousAgentResponses.map((response) => ({
+                agent_id: response.agentId,
+                agent_name: response.agentName,
+              })),
             },
           });
+
+          let synthesisMessage: Message;
+
+          try {
+            synthesisMessage = await saveMessage({
+              conversationId,
+              userId: null,
+              role: "assistant",
+              content: finalSynthesis,
+              metadata: synthesisMetadata,
+            });
+          } catch (error) {
+            console.error("Falha ao persistir síntese:", error);
+
+            const persistedErrorMessage =
+              error instanceof Error ? error.message : "Erro ao salvar síntese.";
+
+            synthesisMessage = buildClientOnlyMessage({
+              id: `unsaved-pandora-synthesis-${Date.now()}`,
+              conversationId,
+              role: "assistant",
+              content: `${finalSynthesis}\n\n> ⚠️ Esta síntese foi gerada, mas não foi salva no banco. Erro: ${persistedErrorMessage}`,
+              metadata: {
+                ...synthesisMetadata,
+                status: "failed",
+                retryable: false,
+                error: {
+                  code: "MESSAGE_SAVE_FAILED",
+                  status: null,
+                  message: persistedErrorMessage,
+                },
+              },
+            });
+
+            controller.enqueue(
+              encoder.encode(
+                sse({
+                  type: "agent_error",
+                  agentId: "pandora-synthesis",
+                  agentName: "Síntese Pandora",
+                  code: "MESSAGE_SAVE_FAILED",
+                  status: null,
+                  message: persistedErrorMessage,
+                  retryable: false,
+                  partial: false,
+                })
+              )
+            );
+          }
 
           controller.enqueue(
             encoder.encode(
               sse({
                 type: "final",
-                message: savedSynthesisMessage,
+                message: synthesisMessage,
               })
             )
           );

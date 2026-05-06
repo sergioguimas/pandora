@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Bot, User } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-
+import { RetryMessageButton } from "./retry-message-button";
 import { cn } from "@/lib/utils";
 import type { Message } from "@/types/database";
 
@@ -25,6 +25,7 @@ type ChatMessageListProps = {
   agentName: string;
   currentUserId: string;
   userProfiles: UserProfile[];
+  onRetryMessage?: (assistantMessageId: string) => void;
 };
 
 function getInitials(name: string) {
@@ -69,6 +70,7 @@ export function ChatMessageList({
   agentName,
   currentUserId,
   userProfiles,
+  onRetryMessage
 }: ChatMessageListProps) {
   const endRef = useRef<HTMLDivElement | null>(null);
 
@@ -90,6 +92,18 @@ export function ChatMessageList({
             (item) => item.id === message.user_id
           );
           const metadata = (message.metadata ?? {}) as Record<string, unknown>;
+          const metadataStatus =
+            typeof metadata.status === "string" ? metadata.status : null;
+
+          const canRetry =
+            isAssistant &&
+            metadata.retryable === true &&
+            metadata.retrying !== true &&
+            metadataStatus !== "completed" &&
+            metadataStatus !== "superseded" &&
+            !message.isStreaming;
+
+          const isSuperseded = metadataStatus === "superseded";
           const agentId =
             typeof metadata.agent_id === "string" ? metadata.agent_id : "";
           const metadataAgentName =
@@ -173,7 +187,8 @@ export function ChatMessageList({
                   isCurrentUser ? "flex-row-reverse" : "flex-row",
                   !isUser && "border-l border-white/10 pl-4",
                   isSynthesis && "my-4 border-l-emerald-300/50",
-                  message.isStreaming && "opacity-90"
+                  message.isStreaming && "opacity-90",
+                  isSuperseded && "opacity-45"
                 )}
               >
                 <div
@@ -280,6 +295,25 @@ export function ChatMessageList({
                         {message.content}
                       </p>
                     )}
+                    
+                    {metadata.retrying === true ? (
+                      <p className="mt-3 border-t border-white/10 pt-3 text-xs font-medium text-amber-100/80">
+                        Tentando gerar uma nova resposta...
+                      </p>
+                    ) : null}
+
+                    {isSuperseded ? (
+                      <p className="mt-3 border-t border-white/10 pt-3 text-xs font-medium text-white/45">
+                        Esta resposta foi substituída por uma nova tentativa.
+                      </p>
+                    ) : null}
+
+                    {canRetry ? (
+                      <RetryMessageButton
+                        assistantMessageId={message.id}
+                        onRetryMessage={onRetryMessage}
+                      />
+                    ) : null}
                   </div>
                 </div>
               </motion.div>

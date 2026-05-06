@@ -200,8 +200,6 @@ export function ShareConversationPanel({
     setTimeout(() => setCopied(false), 2000);
   }
 
-  console.log(availableMembers);
-
   return (
     <>
       <button

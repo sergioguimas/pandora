@@ -150,8 +150,6 @@ export function ChatPanel({
     let active = true;
 
     async function subscribeToMessages() {
-      console.log("🔌 Realtime effect mounted:", conversationId);
-
       const supabase = createClient();
 
       const {
@@ -184,19 +182,13 @@ export function ChatPanel({
             filter: `conversation_id=eq.${conversationId}`,
           },
           (payload) => {
-            console.log("🔥 REALTIME RECEIVED:", payload);
-
             const newMessage = payload.new as Message;
 
             setLocalMessages((prev) => mergeRealtimeMessage(prev, newMessage));
           }
         )
-        .subscribe((status) => {
-          console.log("📡 Realtime status:", status);
-        });
 
       return () => {
-        console.log("❌ Realtime cleanup:", conversationId);
         supabase.removeChannel(channel);
       };
     }
@@ -510,6 +502,239 @@ export function ChatPanel({
     }
   }
 
+  async function handleRetryMessage(assistantMessageId: string) {
+    if (sending) return;
+
+    setSending(true);
+
+    try {
+      const response = await fetch("/api/chat/retry", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          assistantMessageId,
+        }),
+      });
+
+      if (!response.ok || !response.body) {
+        const payload = await response.json().catch(() => null);
+
+        throw new Error(payload?.error ?? "Falha ao iniciar nova tentativa.");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      let done = false;
+      let buffer = "";
+
+      while (!done) {
+        const result = await reader.read();
+        done = result.done;
+
+        if (!result.value) continue;
+
+        buffer += decoder.decode(result.value, { stream: true });
+
+        const events = buffer.split("\n\n");
+        buffer = events.pop() ?? "";
+
+        for (const event of events) {
+          const lines = event.split("\n");
+          const dataLines = lines
+            .filter((line) => line.startsWith("data: "))
+            .map((line) => line.slice(6));
+
+          if (dataLines.length === 0) continue;
+
+          const payload = dataLines.join("\n");
+
+          if (payload === "[DONE]") {
+            setLocalMessages((prev) =>
+              prev.map((message) =>
+                message.isStreaming
+                  ? {
+                      ...message,
+                      isStreaming: false,
+                    }
+                  : message
+              )
+            );
+
+            continue;
+          }
+
+          const parsed = JSON.parse(payload) as
+            | {
+                type: "retry_started";
+                originalMessageId: string;
+                agentId: string;
+                agentName: string;
+              }
+            | {
+                type: "token";
+                token: string;
+                agentId?: string;
+                agentName?: string;
+              }
+            | {
+                type: "final";
+                message?: Message;
+                supersededMessageId?: string;
+              }
+            | {
+                type: "error";
+                error: string;
+              };
+
+          if (parsed.type === "retry_started") {
+            setLocalMessages((prev) =>
+              prev.map((message) => {
+                if (message.id !== parsed.originalMessageId) return message;
+
+                return {
+                  ...message,
+                  metadata: {
+                    ...((message.metadata ?? {}) as Record<string, unknown>),
+                    retrying: true,
+                  },
+                };
+              })
+            );
+
+            continue;
+          }
+
+          if (parsed.type === "token") {
+            const streamAgentId = parsed.agentId ?? "retry-agent";
+            const streamAgentName = parsed.agentName ?? agentName;
+            const tempId = `temp-retry-assistant-${assistantMessageId}`;
+
+            setLocalMessages((prev) => {
+              const existingIndex = prev.findIndex(
+                (message) => message.id === tempId
+              );
+
+              if (existingIndex >= 0) {
+                const next = [...prev];
+                const current = next[existingIndex];
+
+                next[existingIndex] = {
+                  ...current,
+                  content: `${current.content ?? ""}${parsed.token}`,
+                  isStreaming: true,
+                };
+
+                return next;
+              }
+
+              return [
+                ...prev,
+                {
+                  id: tempId,
+                  conversation_id: conversationId,
+                  user_id: null,
+                  role: "assistant",
+                  content: parsed.token,
+                  metadata: {
+                    agent_id: streamAgentId,
+                    agent_name: streamAgentName,
+                    status: "streaming",
+                    retry_of_message_id: assistantMessageId,
+                  },
+                  created_at: new Date().toISOString(),
+                  isStreaming: true,
+                },
+              ];
+            });
+
+            continue;
+          }
+
+          if (parsed.type === "final") {
+            const finalMessage = parsed.message;
+
+            if (!finalMessage) continue;
+
+            setLocalMessages((prev) => {
+              let next = prev.map((message) => {
+                if (message.id !== parsed.supersededMessageId) return message;
+
+                return {
+                  ...message,
+                  metadata: {
+                    ...((message.metadata ?? {}) as Record<string, unknown>),
+                    status: "superseded",
+                    retryable: false,
+                    retrying: false,
+                  },
+                };
+              });
+
+              const existingRealIndex = next.findIndex(
+                (message) => message.id === finalMessage.id
+              );
+
+              if (existingRealIndex >= 0) {
+                next[existingRealIndex] = {
+                  ...finalMessage,
+                  isStreaming: false,
+                };
+
+                return next;
+              }
+
+              const tempId = `temp-retry-assistant-${assistantMessageId}`;
+              const existingTempIndex = next.findIndex(
+                (message) => message.id === tempId
+              );
+
+              if (existingTempIndex >= 0) {
+                next[existingTempIndex] = {
+                  ...finalMessage,
+                  isStreaming: false,
+                };
+
+                return next;
+              }
+
+              return [...next, { ...finalMessage, isStreaming: false }];
+            });
+
+            continue;
+          }
+
+          if (parsed.type === "error") {
+            throw new Error(parsed.error);
+          }
+        }
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Erro ao tentar novamente.";
+
+      setLocalMessages((prev) =>
+        prev.map((item) => {
+          if (item.id !== assistantMessageId) return item;
+
+          return {
+            ...item,
+            metadata: {
+              ...((item.metadata ?? {}) as Record<string, unknown>),
+              retrying: false,
+            },
+          };
+        })
+      );
+
+      console.error(message);
+    } finally {
+      setSending(false);
+    }
+  }
+
   return (
     <>
       <div className="relative flex-1 overflow-y-auto bg-[#050b16]">
@@ -521,6 +746,7 @@ export function ChatPanel({
             agentName={agentName}
             currentUserId={currentUserId}
             userProfiles={userProfiles}
+            onRetryMessage={handleRetryMessage}
           />
 
           {sending && !hasStreamingMessage ? <ChatTypingIndicator /> : null}

@@ -94,3 +94,26 @@ export type KnowledgeChunk = {
   metadata: Record<string, unknown> | null;
   created_at: string;
 };
+
+export type MessageMetadata = {
+  agent_id?: string;
+  agent_name?: string;
+
+  status?: "completed" | "partial" | "failed" | "superseded";
+
+  retryable?: boolean;
+
+  error?: {
+    code?: string;
+    status?: number | null;
+    message?: string;
+  } | null;
+
+  original_user_message_id?: string;
+  retry_of_message_id?: string;
+
+  orchestration?: {
+    mode?: "chain" | "synthesis" | "retry";
+    [key: string]: unknown;
+  };
+};

@@ -1,5 +1,8 @@
 "use client";
 
+import { LogOut, Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import { useEffect, useMemo, useState } from "react";
 import { Bot, MessageSquare, Plus, Search } from "lucide-react";
 import type { AgentListItem } from "@/types/database";
@@ -84,6 +87,16 @@ export function AgentsSidebar({ agents, activeSlug }: AgentsSidebarProps) {
       );
     });
   }, [conversations, query]);
+
+  const router = useRouter();
+  const supabase = createClient();
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+
+    router.replace("/login");
+    router.refresh();
+  }
 
   const sidebarInner = (
     <div className="flex h-full flex-col bg-[#020817] text-white">
@@ -180,6 +193,16 @@ export function AgentsSidebar({ agents, activeSlug }: AgentsSidebarProps) {
           </div>
         )}
       </div>
+            <div className="mt-auto border-t border-white/10 p-3">
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-white/60 transition hover:bg-red-500/10 hover:text-red-200"
+        >
+          <LogOut className="h-4 w-4" />
+          <span>Sair</span>
+        </button>
+      </div>
     </div>
   );
 
@@ -187,7 +210,11 @@ export function AgentsSidebar({ agents, activeSlug }: AgentsSidebarProps) {
     <>
       <aside className="z-20 hidden w-full max-w-[320px] border-r border-white/10 md:block lg:max-w-sm">
         {sidebarInner}
+
       </aside>
+
+
+
 
       <div className="md:hidden">
         <div className="fixed left-4 top-4 z-50">
