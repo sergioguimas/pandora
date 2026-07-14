@@ -2,254 +2,179 @@
 
 ![Status](https://img.shields.io/badge/status-em%20desenvolvimento-yellow)
 ![Version](https://img.shields.io/badge/version-0.1.0-blue)
-![Node](https://img.shields.io/badge/node-%3E%3D18-green)
+![Next.js](https://img.shields.io/badge/Next.js-16-black)
+![Supabase](https://img.shields.io/badge/Supabase-Postgres%20%2B%20pgvector-3ECF8E)
+![IA](https://img.shields.io/badge/IA-Google%20Gemini-4285F4)
 ![License](https://img.shields.io/badge/license-private-red)
-![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
-> Hub interno de agentes inteligentes para produtividade administrativa
+> Hub interno de agentes de IA especializados para produtividade administrativa.
 
----
-
-## 📌 Sobre o Projeto
-
-O **Pandora** é uma aplicação interna desenvolvida para centralizar e utilizar **agentes de inteligência artificial especializados**, com foco em apoiar colaboradores em atividades administrativas, operacionais e de atendimento.
-
-Ao invés de um chatbot genérico, o Pandora funciona como um **ambiente com múltiplos agentes**, onde cada agente possui:
-
-- função bem definida  
-- comportamento estruturado  
-- conhecimento específico do domínio  
+Pandora é um ambiente de **múltiplos agentes de IA** onde cada agente tem função,
+comportamento e base de conhecimento próprios. Diferente de um chatbot genérico, os
+agentes podem trabalhar **em conjunto numa mesma conversa** — respondendo em cadeia e
+tendo suas respostas consolidadas por um agente sintetizador.
 
 ---
 
-## 🎯 Objetivo
+## ✨ O que já está implementado
 
-Aumentar a eficiência operacional através de:
+- 🔐 **Autenticação** via Supabase Auth (login / cadastro).
+- 💬 **Chat com streaming** token-a-token (Server-Sent Events).
+- 🤖 **Orquestração multi-agente**: vários agentes na mesma conversa, resposta em
+  cadeia + **síntese final** automática.
+- 🔁 **Chamada dinâmica entre agentes** (um agente pode acionar outro).
+- 📚 **RAG (busca semântica)** por agente com **pgvector** + fallback textual por
+  palavra-chave.
+- ♻️ **Resiliência de IA**: retry com backoff, timeout, classificação de erros do
+  provedor e detecção de respostas truncadas.
+- 🧵 **"Tentar novamente"** por mensagem, com versionamento (`superseded`).
+- 👥 **Organizações e compartilhamento** de conversas por participantes.
+- 🎛️ **CRUD de agentes** e ingestão de base de conhecimento.
+- ⚡ **Realtime** para sincronizar mensagens entre abas/participantes.
 
-- 📊 padronização de processos administrativos  
-- ⚡ redução de tarefas repetitivas  
-- 🧠 apoio à tomada de decisão  
-- 🗣️ melhoria na comunicação interna e externa  
-- ❌ redução de erros operacionais  
-
----
-
-## 🚫 Escopo da V1
-
-A primeira versão do Pandora será:
-
-- 🔒 Uso exclusivamente interno  
-- 👥 Focada em colaboradores  
-- ⚙️ Simples e funcional (sem overengineering)  
-- 🤖 Com número reduzido de agentes iniciais  
-- 📂 Com suporte a arquivos (PDF, imagens, texto)  
+> ⚠️ Consulte [`docs/DIVIDA-TECNICA.md`](docs/DIVIDA-TECNICA.md) para o que está
+> **incompleto, duplicado ou com bug conhecido** antes de mexer no código.
 
 ---
 
-## 🤖 Tipos de Agentes
+## 🧱 Stack real
 
-### 🔹 Executor
-Processa dados e retorna resultados estruturados.
+| Camada | Tecnologia |
+|---|---|
+| Framework | **Next.js 16** (App Router, React Server Components) |
+| UI | **React 19** + React Compiler, Tailwind CSS v4, shadcn/ui, Radix, Framer Motion |
+| Backend | **Route Handlers + Server Actions** do próprio Next (não há servidor Fastify) |
+| Banco | **PostgreSQL** (Supabase) + extensão **pgvector** |
+| Auth / Storage / Realtime | **Supabase** |
+| IA | **Google Gemini** via `@google/genai` (geração + embeddings 768d) |
+| Validação | Zod + React Hook Form |
+| Infra | Docker (multi-stage, `output: standalone`) + Traefik (TLS) |
 
-**Exemplos de uso:**
-- análise de documentos  
-- extração de dados  
-- geração de relatórios  
-
----
-
-### 🔹 Copiloto (principal foco)
-Auxilia o colaborador na execução de tarefas e decisões.
-
-**Exemplos de uso:**
-- orientação de atendimento  
-- suporte administrativo  
-- estruturação de respostas  
-- apoio em processos internos  
+> Nota: o provider `openai` existe na interface de código mas **ainda não está
+> implementado** — hoje só o Gemini funciona.
 
 ---
 
-### 🔹 Assistente (futuro)
-Agentes mais genéricos para apoio complementar.
+## 🚀 Começando
+
+### Pré-requisitos
+
+- **Node.js 22** (o Docker usa `node:22-alpine`; 18+ tende a funcionar).
+- Conta/projeto no **Supabase** com a extensão `vector` habilitada.
+- **API Key do Google Gemini**.
+- [Supabase CLI](https://supabase.com/docs/guides/cli) para rodar as migrations.
+
+### 1. Instalar dependências
+
+```bash
+npm install
+```
+
+### 2. Variáveis de ambiente
+
+Crie um `.env.local` (para produção use `.env.production`, lido pelo `docker-compose`):
+
+```bash
+# Supabase
+NEXT_PUBLIC_SUPABASE_URL=https://<seu-projeto>.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
+SUPABASE_SERVICE_ROLE_KEY=<service-role-key>   # usado só no bootstrap de organização
+
+# Gemini
+GEMINI_API_KEY=<sua-api-key>
+GEMINI_MODEL=gemini-2.5-flash                  # opcional (fallback do provider)
+```
+
+> Todos os arquivos `.env*` estão no `.gitignore`. **Nunca** versione a
+> `SUPABASE_SERVICE_ROLE_KEY` — ela ignora o RLS.
+
+### 3. Aplicar o schema do banco
+
+```bash
+supabase link --project-ref <ref>
+supabase db push
+```
+
+Isso cria as tabelas, políticas RLS, funções, triggers, buckets de storage e faz o
+**seed de 3 agentes** (`assistente-geral`, `consultor-comercial`, `analista-documental`).
+
+### 4. Rodar em desenvolvimento
+
+```bash
+npm run dev
+# http://localhost:3000
+```
+
+### Scripts
+
+| Script | Descrição |
+|---|---|
+| `npm run dev` | Servidor de desenvolvimento |
+| `npm run build` | Build de produção (`standalone`) |
+| `npm run start` | Sobe o build de produção |
+| `npm run lint` | ESLint |
 
 ---
 
-## 🧱 Arquitetura
+## 🗂️ Estrutura do projeto
 
-Frontend (React / Next.js)
-↓
-Backend (Fastify)
-↓
-Serviços:
+```
+src/
+├── app/
+│   ├── (auth)/                  # login, cadastro
+│   ├── (dashboard)/             # chat, agentes (protegido por layout server-side)
+│   └── api/
+│       ├── chat/stream/         # 🟢 motor principal: streaming multi-agente + RAG
+│       ├── chat/retry/          # regeneração de uma resposta falha
+│       ├── agents/              # endpoints de agentes
+│       └── conversations/       # endpoints de conversas
+├── components/                  # UI (chat/, agents/, ui/, layout/)
+├── lib/                         # clients: supabase (server/client/admin/realtime), gemini, auth
+├── server/
+│   ├── actions/                 # Server Actions ("use server")
+│   ├── repositories/            # 🔒 todo acesso a dados (sempre via RLS)
+│   └── services/ai/             # provider Gemini, embeddings, RAG, ingestão
+└── types/                       # tipos de domínio (database, ai)
 
-LLM API
-Supabase (Auth, Database, Storage)
-
----
-
-## ⚙️ Stack Tecnológica
-
-### 🖥️ Frontend
-- React (Vite) ou Next.js  
-- Tailwind CSS  
-- shadcn/ui  
-
-**Justificativa:**
-- alta produtividade no desenvolvimento  
-- criação rápida de interfaces modernas  
-- padronização visual consistente  
-
----
-
-### 🔙 Backend
-- Node.js  
-- Fastify  
-- TypeScript  
-
-**Justificativa:**
-- performance elevada  
-- simplicidade de implementação  
-- integração fácil com APIs externas  
+supabase/migrations/             # histórico versionado do schema + RLS
+docs/                            # 📚 documentação técnica (comece por ARQUITETURA.md)
+```
 
 ---
 
-### 🗄️ Banco de Dados
-- PostgreSQL (via Supabase)
+## 🔄 Fluxo de uma mensagem (resumo)
 
-**Justificativa:**
-- confiabilidade  
-- integração com autenticação e storage  
-- escalabilidade futura  
+1. Cliente faz `POST /api/chat/stream` e lê a resposta como **SSE**.
+2. O servidor autentica, salva a mensagem do usuário (RLS valida participação).
+3. Gera **embedding** da pergunta e carrega os agentes da conversa.
+4. Para cada agente: busca **RAG** → monta prompt → **stream** de tokens (com retry/timeout).
+5. Se houver mais de um agente, um **agente sintetizador** consolida a resposta final.
+6. Tudo é persistido em `messages` com `metadata` de orquestração e status.
 
----
-
-### 🔐 Autenticação
-- Supabase Auth  
+Detalhes completos em [`docs/FLUXO-DE-CHAT.md`](docs/FLUXO-DE-CHAT.md).
 
 ---
 
-### 📎 Armazenamento de Arquivos
-- Supabase Storage  
+## 📚 Documentação técnica
 
----
-
-### 🧠 Inteligência Artificial
-- API de LLM (OpenAI ou compatível)
-
----
-
-### 🚀 Infraestrutura
-- VPS própria  
-- Docker  
-- Traefik (proxy reverso + SSL)  
-
----
-
-## 🧩 Estrutura do Sistema
-
-### 👥 Usuários
-- autenticação obrigatória  
-- acesso individual às conversas  
-
----
-
-### 🤖 Agentes
-Cada agente possui:
-- prompt próprio  
-- comportamento definido  
-- base de conhecimento opcional  
-
----
-
-### 💬 Conversas
-- modelo inspirado em aplicativos de chat  
-- histórico persistente  
-- isolamento por agente  
-
----
-
-### 📂 Arquivos
-- upload por conversa  
-- suporte a múltiplos formatos  
-- utilizados por agentes executores  
-
----
-
-### 📚 Base de Conhecimento
-- vinculada a cada agente  
-- composta por documentos e conteúdos internos  
-
----
-
-## 🔄 Fluxo de Funcionamento
-
-1. Usuário envia mensagem (e arquivos, se necessário)  
-2. Sistema identifica o agente selecionado  
-3. Carrega configurações e contexto  
-4. Processa arquivos (se houver)  
-5. Envia requisição para o modelo de IA  
-6. Recebe resposta  
-7. Salva histórico  
-8. Retorna resposta ao usuário  
-
----
-
-## 🧠 Princípios do Projeto
-
-- ❌ Não é um chatbot genérico  
-- ✅ Cada agente tem um propósito específico  
-- ✅ Foco em produtividade, não em conversa  
-- ✅ Respostas práticas e aplicáveis  
-- ✅ Estrutura e clareza acima de criatividade  
+| Documento | Conteúdo |
+|---|---|
+| [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md) | Camadas, responsabilidades, decisões e diagrama |
+| [`docs/BANCO-DE-DADOS.md`](docs/BANCO-DE-DADOS.md) | Tabelas, RLS, funções, timeline das migrations |
+| [`docs/FLUXO-DE-CHAT.md`](docs/FLUXO-DE-CHAT.md) | Streaming, orquestração, RAG, retry, eventos SSE |
+| [`docs/DIVIDA-TECNICA.md`](docs/DIVIDA-TECNICA.md) | Backlog rastreável: bugs, duplicação, código morto |
 
 ---
 
 ## 🗺️ Roadmap
 
-### ✅ Fase 1 — MVP
-- autenticação de usuários  
-- lista inicial de agentes  
-- chat funcional  
-- upload de arquivos  
-- integração com IA  
-
----
-
-### 🔜 Fase 2
-- CRUD de agentes  
-- base de conhecimento por agente  
-- melhorias no processamento de arquivos  
-
----
-
-### 🔜 Fase 3
-- memória persistente  
-- sugestões automáticas  
-- templates de resposta  
-
----
-
-### 🔮 Futuro (possível evolução)
-- integrações externas (e-mail, mensageria, CRM)  
-- multi-tenant  
-- white-label  
-- automação de fluxos  
-
----
-
-## 📌 Status
-
-🚧 Em desenvolvimento — Versão 0.1 (MVP)
+- **Fase 1 — MVP** ✅ auth, agentes, chat, RAG, streaming
+- **Fase 2** ✅ organizações, compartilhamento, multi-agente por conversa
+- **Fase 3** 🔜 memória persistente, sugestões automáticas, templates
+- **Futuro** 🔮 integrações externas, multi-tenant real, white-label, automação de fluxos
 
 ---
 
 ## 📄 Licença
 
-Uso interno — projeto privado
-
----
-
-## 💡 Observação
-
-O Pandora foi projetado inicialmente como uma ferramenta interna para ganho de produtividade administrativa,  
-mas sua arquitetura permite evolução futura para cenários mais amplos, caso necessário.
+Uso interno — projeto privado.
