@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Bot, User } from "lucide-react";
+import { Bot, Sparkles, User } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { RetryMessageButton } from "./retry-message-button";
@@ -45,24 +45,8 @@ function getDisplayName(
   return profile?.nome || profile?.email || "Usuário";
 }
 
-function getAgentColor(agentId: string | undefined) {
-  if (!agentId) return "border-white/10 bg-white/[0.04]";
-
-  const colors = [
-    "border-blue-300/25 bg-blue-300/10",
-    "border-emerald-300/25 bg-emerald-300/10",
-    "border-cyan-300/25 bg-cyan-300/10",
-    "border-amber-300/25 bg-amber-300/10",
-    "border-rose-300/25 bg-rose-300/10",
-  ];
-
-  let hash = 0;
-
-  for (let i = 0; i < agentId.length; i++) {
-    hash = agentId.charCodeAt(i) + ((hash << 5) - hash);
-  }
-
-  return colors[Math.abs(hash) % colors.length];
+function formatTime(value: string) {
+  return format(new Date(value), "HH:mm", { locale: ptBR });
 }
 
 export function ChatMessageList({
@@ -70,7 +54,7 @@ export function ChatMessageList({
   agentName,
   currentUserId,
   userProfiles,
-  onRetryMessage
+  onRetryMessage,
 }: ChatMessageListProps) {
   const endRef = useRef<HTMLDivElement | null>(null);
 
@@ -82,7 +66,7 @@ export function ChatMessageList({
   }, [messages]);
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-2">
       <AnimatePresence initial={false}>
         {messages.map((message, index) => {
           const isUser = message.role === "user";
@@ -122,13 +106,23 @@ export function ChatMessageList({
             isAssistant &&
             message.isStreaming &&
             !(message.content ?? "").trim();
+
+          const orchestration = (metadata.orchestration ?? {}) as {
+            mode?: string;
+            order?: number;
+          };
+          const isChainContribution =
+            isAssistant && !isSynthesis && orchestration.mode === "chain";
+          const chainOrder =
+            isChainContribution && typeof orchestration.order === "number"
+              ? orchestration.order
+              : null;
+
           const previousMessage = messages[index - 1];
-          const nextMessage = messages[index + 1];
           const isStartOfAgentBlock =
             isAssistant &&
+            !isSynthesis &&
             (!previousMessage || previousMessage.role === "user");
-          const isEndOfAgentBlock =
-            isAssistant && (!nextMessage || nextMessage.role === "user");
           const systemType =
             typeof metadata.type === "string" ? metadata.type : null;
 
@@ -136,13 +130,13 @@ export function ChatMessageList({
             const isAgentCall = systemType === "agent_call";
 
             return (
-              <div key={message.id} className="my-3 flex justify-center">
+              <div key={message.id} className="my-2 flex justify-center">
                 <div
                   className={cn(
-                    "rounded-md border px-4 py-2 text-xs font-semibold",
+                    "rounded-md px-3 py-1.5 font-mono text-xs",
                     isAgentCall
-                      ? "border-emerald-300/20 bg-emerald-300/10 text-emerald-100"
-                      : "border-white/10 bg-white/[0.04] text-white/55"
+                      ? "bg-primary-soft text-primary"
+                      : "bg-surface-2 text-muted-foreground"
                   )}
                 >
                   {message.content}
@@ -151,65 +145,98 @@ export function ChatMessageList({
             );
           }
 
-          return (
-            <div
-              key={message.id}
-              className={cn(
-                isAssistant && "relative",
-                isStartOfAgentBlock && "mt-4",
-                isEndOfAgentBlock && "mb-6"
-              )}
-            >
-              {isStartOfAgentBlock ? (
-                <div className="my-6 flex items-center gap-3">
-                  <div className="h-px flex-1 bg-white/10" />
+          // Resposta final consolidada — tratada como um resultado, não como um balão.
+          if (isSynthesis) {
+            return (
+              <motion.div
+                key={message.id}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.18, ease: "easeOut" }}
+                className={cn("my-2", isSuperseded && "opacity-45")}
+              >
+                <div className="mb-2.5 flex items-center gap-3">
+                  <div className="h-px flex-1 bg-primary/30" />
+                  <span className="font-mono text-[11px] uppercase tracking-wider text-primary">
+                    resposta final
+                  </span>
+                  <div className="h-px flex-1 bg-primary/30" />
+                </div>
 
-                  <span className="rounded-md border border-white/10 bg-[#020817] px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white/45">
+                <div className="overflow-hidden rounded-lg border border-primary/35 bg-primary-soft">
+                  <div className="flex items-center gap-2 border-b border-primary/20 px-4 py-2.5">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/20 text-primary">
+                      <Sparkles className="h-3.5 w-3.5" />
+                    </span>
+                    <span className="text-sm font-semibold text-foreground">
+                      Síntese Pandora
+                    </span>
+                    <span className="font-mono text-[11px] text-muted-foreground">
+                      consolidação dos agentes
+                    </span>
+                    <span className="ml-auto font-mono text-[11px] text-subtle-foreground">
+                      {formatTime(message.created_at)}
+                    </span>
+                  </div>
+
+                  <div className="px-4 py-3 text-sm leading-relaxed text-foreground">
+                    <p className="whitespace-pre-wrap break-words">
+                      {message.content}
+                    </p>
+
+                    {isSuperseded ? (
+                      <p className="mt-2.5 border-t border-primary/20 pt-2.5 font-mono text-xs text-subtle-foreground">
+                        Substituída por uma nova tentativa.
+                      </p>
+                    ) : null}
+
+                    {canRetry ? (
+                      <RetryMessageButton
+                        assistantMessageId={message.id}
+                        onRetryMessage={onRetryMessage}
+                      />
+                    ) : null}
+                  </div>
+                </div>
+              </motion.div>
+            );
+          }
+
+          return (
+            <div key={message.id}>
+              {isStartOfAgentBlock && previousMessage ? (
+                <div className="my-4 flex items-center gap-3">
+                  <div className="h-px flex-1 bg-border" />
+                  <span className="font-mono text-[11px] uppercase tracking-wider text-subtle-foreground">
                     {message.isStreaming
                       ? `${senderName} respondendo`
-                      : "Rodada de agentes"}
+                      : "rodada de agentes"}
                   </span>
-
-                  <div className="h-px flex-1 bg-white/10" />
+                  <div className="h-px flex-1 bg-border" />
                 </div>
               ) : null}
 
               <motion.div
-                key={message.id}
-                initial={{ opacity: 0, y: 12, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{
-                  duration: 0.2,
-                  delay: Math.min(index * 0.05, 0.3),
-                }}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.15, ease: "easeOut" }}
                 className={cn(
-                  "flex w-full items-end gap-3",
+                  "flex w-full items-start gap-2.5",
                   isCurrentUser ? "flex-row-reverse" : "flex-row",
-                  !isUser && "border-l border-white/10 pl-4",
-                  isSynthesis && "my-4 border-l-emerald-300/50",
-                  message.isStreaming && "opacity-90",
                   isSuperseded && "opacity-45"
                 )}
               >
                 <div
                   className={cn(
-                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-[10px] font-bold shadow-sm",
-                    isSynthesis
-                      ? "border-emerald-300/35 bg-emerald-300/12 text-emerald-100"
-                      : isAssistant
-                        ? cn("text-white", getAgentColor(agentId))
-                        : isCurrentUser
-                          ? "border-white bg-white text-[#020817]"
-                          : "border-white/10 bg-white/[0.04] text-white"
+                    "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md font-mono text-[11px] font-semibold",
+                    isCurrentUser
+                      ? "bg-primary/15 text-primary"
+                      : "border border-border bg-surface-2 text-muted-foreground"
                   )}
                 >
                   {isAssistant ? (
-                    isSynthesis ? (
+                    getInitials(agentNameFromMetadata) || (
                       <Bot className="h-4 w-4" />
-                    ) : (
-                      getInitials(agentNameFromMetadata) || (
-                        <Bot className="h-4 w-4" />
-                      )
                     )
                   ) : avatarLabel ? (
                     avatarLabel
@@ -220,91 +247,75 @@ export function ChatMessageList({
 
                 <div
                   className={cn(
-                    "flex max-w-[85%] flex-col gap-1 md:max-w-[75%]",
+                    "flex max-w-[82%] flex-col gap-1 md:max-w-[70%]",
                     isCurrentUser ? "items-end" : "items-start"
                   )}
                 >
                   <div
                     className={cn(
-                      "flex items-center gap-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-white/45",
+                      "flex items-center gap-2 px-0.5 font-mono text-[11px] text-subtle-foreground",
                       isCurrentUser && "flex-row-reverse"
                     )}
                   >
-                    <span>{senderName}</span>
-                    <span>
-                      {format(new Date(message.created_at), "HH:mm", {
-                        locale: ptBR,
-                      })}
+                    {chainOrder ? (
+                      <span className="rounded bg-surface-2 px-1.5 py-0.5 font-semibold text-muted-foreground">
+                        #{chainOrder}
+                      </span>
+                    ) : null}
+                    <span className="font-medium text-muted-foreground">
+                      {senderName}
                     </span>
+                    <span>{formatTime(message.created_at)}</span>
                   </div>
 
                   <div
                     className={cn(
-                      "relative rounded-lg px-4 py-3 text-sm leading-relaxed shadow-sm transition-all",
-                      isSynthesis
-                        ? "border border-emerald-300/25 bg-emerald-300/10 text-white"
-                        : isCurrentUser
-                          ? "bg-white text-[#020817]"
-                          : isAssistant
-                            ? cn(
-                                "border text-white backdrop-blur-md",
-                                getAgentColor(agentId)
-                              )
-                            : "border border-white/10 bg-white/[0.04] text-white"
+                      "relative rounded-lg px-3.5 py-2.5 text-sm leading-relaxed",
+                      isCurrentUser
+                        ? "rounded-tr-sm bg-bubble-user text-bubble-user-foreground"
+                        : cn(
+                            "rounded-tl-sm border bg-bubble-agent text-bubble-agent-foreground",
+                            isChainContribution
+                              ? "border-border border-l-2 border-l-border-strong"
+                              : "border-border"
+                          )
                     )}
                   >
-                    {isSynthesis ? (
-                      <div className="mb-3 flex items-center gap-2 border-b border-emerald-300/20 pb-3">
-                        <span className="rounded-md border border-emerald-300/25 bg-emerald-300/10 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-100">
-                          Síntese final
-                        </span>
-                        <span className="text-xs font-medium text-white/50">
-                          Consolidação dos agentes
-                        </span>
-                      </div>
-                    ) : null}
-
                     {isEmptyStreamingAssistant ? (
-                      <div className="flex items-center gap-2 text-sm text-white/55">
-                        <span className="font-medium">
-                          {agentNameFromMetadata} está digitando
-                        </span>
-
-                        <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <span>{agentNameFromMetadata} está digitando</span>
+                        <div className="flex items-center gap-1">
                           {[0, 1, 2].map((dot) => (
                             <motion.span
                               key={dot}
-                              initial={{ y: 0, opacity: 0.4 }}
-                              animate={{
-                                y: [0, -5, 0],
-                                opacity: [0.4, 1, 0.4],
-                              }}
+                              initial={{ opacity: 0.3 }}
+                              animate={{ opacity: [0.3, 1, 0.3] }}
                               transition={{
-                                duration: 0.8,
+                                duration: 0.9,
                                 repeat: Infinity,
                                 ease: "easeInOut",
-                                delay: dot * 0.12,
+                                delay: dot * 0.15,
                               }}
-                              className="h-2 w-2 rounded-full bg-current"
+                              className="h-1.5 w-1.5 rounded-full bg-current"
                             />
                           ))}
                         </div>
                       </div>
                     ) : (
-                      <p className="whitespace-pre-wrap break-words font-medium">
+                      <p className="whitespace-pre-wrap break-words">
                         {message.content}
                       </p>
                     )}
-                    
+
                     {metadata.retrying === true ? (
-                      <p className="mt-3 border-t border-white/10 pt-3 text-xs font-medium text-amber-100/80">
-                        Tentando gerar uma nova resposta...
+                      <p className="mt-2.5 border-t border-border/60 pt-2.5 font-mono text-xs text-muted-foreground">
+                        Gerando nova resposta…
                       </p>
                     ) : null}
 
                     {isSuperseded ? (
-                      <p className="mt-3 border-t border-white/10 pt-3 text-xs font-medium text-white/45">
-                        Esta resposta foi substituída por uma nova tentativa.
+                      <p className="mt-2.5 border-t border-border/60 pt-2.5 font-mono text-xs text-subtle-foreground">
+                        Substituída por uma nova tentativa.
                       </p>
                     ) : null}
 
@@ -322,7 +333,7 @@ export function ChatMessageList({
         })}
       </AnimatePresence>
 
-      <div ref={endRef} className="h-4" />
+      <div ref={endRef} className="h-2" />
     </div>
   );
 }

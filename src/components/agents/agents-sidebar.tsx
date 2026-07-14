@@ -23,42 +23,21 @@ export function AgentsSidebar({ agents, selectedSlug }: AgentsSidebarProps) {
   const activeCount = agents.filter((agent) => agent.ativo).length;
 
   return (
-    <aside className="hidden h-full w-full max-w-[320px] flex-col border-r border-white/10 bg-[#020817] text-white shadow-2xl md:flex lg:max-w-sm">
-      <div className="border-b border-white/10 px-5 py-5">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-emerald-300/80">
-              Controle
-            </p>
-            <h1 className="mt-1 text-xl font-bold tracking-tight">Agentes</h1>
-            <p className="mt-1 text-xs leading-5 text-white/55">
-              Configure identidade, prompts e conhecimento dos especialistas.
-            </p>
-          </div>
-
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-white/75">
-            <Settings2 className="h-4 w-4" />
-          </div>
+    <aside className="hidden h-full w-full max-w-[320px] flex-col border-r border-border bg-surface-1 text-foreground md:flex lg:max-w-sm">
+      <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-4">
+        <div className="flex items-baseline gap-2">
+          <h1 className="text-sm font-semibold tracking-tight">Agentes</h1>
+          <span className="font-mono text-xs text-subtle-foreground">
+            {agents.length} · {activeCount} ativos
+          </span>
         </div>
 
-        <div className="mt-5 grid grid-cols-2 gap-2">
-          <div className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-white/45">
-              Total
-            </p>
-            <p className="mt-1 text-lg font-black">{agents.length}</p>
-          </div>
-
-          <div className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-white/45">
-              Ativos
-            </p>
-            <p className="mt-1 text-lg font-black">{activeCount}</p>
-          </div>
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground">
+          <Settings2 className="h-4 w-4" />
         </div>
       </div>
 
-      <div className="custom-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto px-4 py-4">
+      <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 py-2">
         {agents.map((agent) => {
           const isActive = agent.slug === selectedSlug;
 
@@ -67,19 +46,17 @@ export function AgentsSidebar({ agents, selectedSlug }: AgentsSidebarProps) {
               key={agent.id}
               href={`/agentes?slug=${agent.slug}`}
               className={cn(
-                "group relative block rounded-lg border px-3 py-3 transition",
-                isActive
-                  ? "border-white/20 bg-white/[0.09]"
-                  : "border-transparent hover:border-white/10 hover:bg-white/[0.04]"
+                "group relative block rounded-md px-2 py-2.5 transition-colors",
+                isActive ? "bg-primary-soft" : "hover:bg-surface-2"
               )}
             >
               <div className="flex items-start gap-3">
                 <div
                   className={cn(
-                    "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border text-xs font-black transition",
+                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-md font-mono text-xs font-semibold",
                     isActive
-                      ? "border-white bg-white text-[#020817]"
-                      : "border-white/10 bg-white/[0.04] text-white"
+                      ? "bg-primary/20 text-primary"
+                      : "border border-border bg-surface-2 text-muted-foreground"
                   )}
                 >
                   {getInitials(agent.nome) || <Bot className="h-4 w-4" />}
@@ -88,29 +65,29 @@ export function AgentsSidebar({ agents, selectedSlug }: AgentsSidebarProps) {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-bold text-white">
+                      <p className="truncate text-sm font-medium text-foreground">
                         {agent.nome}
                       </p>
-                      <p className="mt-0.5 truncate text-xs font-medium text-emerald-100/55">
-                        {agent.category || "Agente"}
+                      <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
+                        {agent.category || "agente"}
                       </p>
                     </div>
 
                     {agent.ativo ? (
-                      <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-200/75" />
+                      <ShieldCheck className="h-4 w-4 shrink-0 text-primary" />
                     ) : (
-                      <ShieldAlert className="h-4 w-4 shrink-0 text-white/30" />
+                      <ShieldAlert className="h-4 w-4 shrink-0 text-subtle-foreground" />
                     )}
                   </div>
 
-                  <p className="mt-2 line-clamp-2 text-xs leading-5 text-white/45">
+                  <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-muted-foreground">
                     {agent.descricao ||
-                      "Nenhuma descrição técnica definida para este agente."}
+                      "Nenhuma descrição definida para este agente."}
                   </p>
 
-                  <div className="mt-3 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-white/35">
+                  <div className="mt-2 flex items-center gap-1.5 font-mono text-[11px] text-subtle-foreground">
                     <Cpu className="h-3 w-3" />
-                    <span className="truncate">{agent.model || "Modelo padrão"}</span>
+                    <span className="truncate">{agent.model || "modelo padrão"}</span>
                   </div>
                 </div>
               </div>

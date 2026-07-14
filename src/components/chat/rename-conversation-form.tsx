@@ -71,9 +71,10 @@ export function RenameConversationForm({
           <button
             type="button"
             onClick={() => setEditing(true)}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border/60 bg-card text-muted-foreground transition hover:bg-accent hover:text-foreground"
+            aria-label="Renomear conversa"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-surface-1 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground"
           >
-            <Pencil className="h-4 w-4" />
+            <Pencil className="h-3.5 w-3.5" />
           </button>
         ) : null}
       </div>
@@ -91,19 +92,21 @@ export function RenameConversationForm({
           value={title}
           onChange={(event) => setTitle(event.target.value)}
           placeholder="Nome da conversa"
-          className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
+          className="h-9 w-full rounded-md border border-input bg-surface-2 px-3 text-sm text-foreground outline-none transition-colors focus:border-ring focus:ring-2 focus:ring-ring/20"
           maxLength={120}
           required
+          autoFocus
         />
         {state.error ? (
-          <p className="mt-1 text-xs text-red-500">{state.error}</p>
+          <p className="mt-1 text-xs text-destructive">{state.error}</p>
         ) : null}
       </div>
 
       <button
         type="submit"
         disabled={pending}
-        className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-600 transition hover:bg-emerald-500/15 disabled:opacity-60"
+        aria-label="Salvar"
+        className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground transition-colors hover:opacity-90 disabled:opacity-60"
       >
         <Check className="h-4 w-4" />
       </button>
@@ -114,7 +117,8 @@ export function RenameConversationForm({
           setTitle(initialTitle);
           setEditing(false);
         }}
-        className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border/60 bg-card text-muted-foreground transition hover:bg-accent hover:text-foreground"
+        aria-label="Cancelar"
+        className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-surface-1 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground"
       >
         <X className="h-4 w-4" />
       </button>

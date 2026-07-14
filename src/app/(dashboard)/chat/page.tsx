@@ -33,15 +33,15 @@ export default async function ChatPage() {
 
       <section className="min-w-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-5 pb-10 pt-20 md:px-8 md:pt-8">
-          <header className="flex flex-col gap-4 border-b border-border/60 pb-6 md:flex-row md:items-end md:justify-between">
+          <header className="flex flex-col gap-4 border-b border-border pb-6 md:flex-row md:items-end md:justify-between">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">
-                Pandora
+              <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+                Pandora AI Hub
               </p>
-              <h1 className="mt-2 text-2xl font-bold tracking-tight md:text-3xl">
+              <h1 className="mt-2 text-2xl font-semibold tracking-tight">
                 Agentes disponíveis
               </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+              <p className="mt-1.5 max-w-2xl text-sm leading-6 text-muted-foreground">
                 Inicie uma conversa individual ou retome o último contexto de
                 cada agente.
               </p>
@@ -50,7 +50,7 @@ export default async function ChatPage() {
             <div className="flex gap-2">
               <Link
                 href="/agentes"
-                className="inline-flex h-10 items-center gap-2 rounded-lg border border-border/70 bg-card/60 px-3 text-sm font-semibold transition hover:bg-accent"
+                className="inline-flex h-10 items-center gap-2 rounded-md border border-border bg-surface-1 px-3.5 text-sm font-medium transition-colors hover:bg-surface-2"
               >
                 <Settings2 className="h-4 w-4" />
                 Gerenciar
@@ -59,34 +59,37 @@ export default async function ChatPage() {
           </header>
 
           <div className="grid gap-3 sm:grid-cols-3">
-            <div className="rounded-lg border border-border/70 bg-card/45 px-4 py-3">
+            <div className="rounded-md border border-border bg-surface-1 px-4 py-3">
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Bot className="h-4 w-4" />
-                <span className="text-xs font-bold uppercase tracking-wider">
+                <span className="font-mono text-xs uppercase tracking-wider">
                   Agentes
                 </span>
               </div>
-              <p className="mt-2 text-2xl font-black">{agents.length}</p>
+              <p className="mt-1.5 text-2xl font-semibold">{agents.length}</p>
             </div>
 
-            <div className="rounded-lg border border-border/70 bg-card/45 px-4 py-3">
+            <div className="rounded-md border border-border bg-surface-1 px-4 py-3">
               <div className="flex items-center gap-2 text-muted-foreground">
                 <MessageSquare className="h-4 w-4" />
-                <span className="text-xs font-bold uppercase tracking-wider">
+                <span className="font-mono text-xs uppercase tracking-wider">
                   Retomáveis
                 </span>
               </div>
-              <p className="mt-2 text-2xl font-black">{recentAgents.length}</p>
+              <p className="mt-1.5 text-2xl font-semibold">{recentAgents.length}</p>
             </div>
 
-            <div className="rounded-lg border border-border/70 bg-card/45 px-4 py-3">
+            <div className="rounded-md border border-border bg-surface-1 px-4 py-3">
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Clock3 className="h-4 w-4" />
-                <span className="text-xs font-bold uppercase tracking-wider">
+                <span className="font-mono text-xs uppercase tracking-wider">
                   Status
                 </span>
               </div>
-              <p className="mt-2 text-sm font-bold">Pronto para conversar</p>
+              <p className="mt-1.5 flex items-center gap-2 text-sm font-medium">
+                <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                Pronto
+              </p>
             </div>
           </div>
 
@@ -101,30 +104,30 @@ export default async function ChatPage() {
                 <Link
                   key={agent.id}
                   href={buildAgentHref(agent)}
-                  className="group rounded-lg border border-border/70 bg-card/45 p-4 transition hover:border-primary/40 hover:bg-card/80"
+                  className="group rounded-md border border-border bg-surface-1 p-4 transition-colors hover:border-border-strong hover:bg-surface-2"
                 >
                   <div className="flex items-start gap-3">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-background text-sm font-black text-primary">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-surface-2 font-mono text-sm font-semibold text-muted-foreground">
                       {getInitials(agent.nome) || <Bot className="h-5 w-5" />}
                     </div>
 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <h2 className="truncate text-base font-bold">
+                          <h2 className="truncate text-sm font-semibold">
                             {agent.nome}
                           </h2>
-                          <p className="mt-0.5 truncate text-xs font-semibold text-muted-foreground">
+                          <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
                             {label}
                           </p>
                         </div>
 
-                        <span className="shrink-0 rounded-md border border-border/70 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                          {agent.last_conversation_id ? "Retomar" : "Novo"}
+                        <span className="shrink-0 font-mono text-[11px] text-subtle-foreground">
+                          {agent.last_conversation_id ? "retomar" : "novo"}
                         </span>
                       </div>
 
-                      <p className="mt-3 line-clamp-2 text-sm leading-6 text-muted-foreground">
+                      <p className="mt-2.5 line-clamp-2 text-sm leading-6 text-muted-foreground">
                         {agent.last_message_preview ||
                           agent.descricao ||
                           "Pronto para iniciar uma nova conversa."}

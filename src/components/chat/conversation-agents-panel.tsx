@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import {
-  Bot,
   ChevronDown,
   ChevronUp,
   Plus,
@@ -64,26 +63,18 @@ export function ConversationAgentsPanel({
 
   return (
     <div className="space-y-5">
-      <div className="rounded-lg border border-white/10 bg-white/[0.04] p-4">
-        <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04]">
-            <Bot className="h-5 w-5 text-emerald-200" />
-          </div>
-
-          <div>
-            <h3 className="text-sm font-bold text-white">
-              Agentes da conversa
-            </h3>
-            <p className="mt-1 text-xs leading-5 text-white/50">
-              Defina especialistas e ordem da rodada.
-            </p>
-          </div>
-        </div>
+      <div>
+        <h3 className="text-sm font-semibold text-foreground">
+          Agentes da conversa
+        </h3>
+        <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
+          Defina especialistas e a ordem da rodada.
+        </p>
       </div>
 
       <div className="space-y-2">
         {agents.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-white/15 px-4 py-6 text-center text-sm text-white/45">
+          <div className="rounded-md border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
             Nenhum agente configurado.
           </div>
         ) : (
@@ -95,27 +86,27 @@ export function ConversationAgentsPanel({
             return (
               <div
                 key={agent.id}
-                className="rounded-lg border border-white/10 bg-white/[0.035] p-3"
+                className="rounded-md border border-border bg-surface-2 p-3"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    <div className="mb-2 flex items-center gap-2">
-                      <span className="rounded-md border border-emerald-300/20 bg-emerald-300/10 px-2 py-1 text-[10px] font-black text-emerald-200">
+                    <div className="mb-1.5 flex items-center gap-2">
+                      <span className="rounded bg-primary-soft px-1.5 py-0.5 font-mono text-[11px] font-semibold text-primary">
                         #{index + 1}
                       </span>
 
                       {index === 0 ? (
-                        <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] font-bold text-white/55">
-                          Primeiro
+                        <span className="rounded bg-surface-3 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+                          primeiro
                         </span>
                       ) : null}
                     </div>
 
-                    <p className="truncate text-sm font-bold text-white">
+                    <p className="truncate text-sm font-medium text-foreground">
                       {agent.nome}
                     </p>
 
-                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-white/45">
+                    <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-muted-foreground">
                       {shortDescription(agent.descricao)}
                     </p>
                   </div>
@@ -131,7 +122,7 @@ export function ConversationAgentsPanel({
                         <button
                           type="submit"
                           disabled={isFirst}
-                          className="flex h-8 w-8 items-center justify-center rounded-md border border-white/10 text-white/50 transition hover:bg-white/[0.08] hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+                          className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
                           aria-label="Mover agente para cima"
                         >
                           <ChevronUp className="h-4 w-4" />
@@ -147,7 +138,7 @@ export function ConversationAgentsPanel({
                         <button
                           type="submit"
                           disabled={isLast}
-                          className="flex h-8 w-8 items-center justify-center rounded-md border border-white/10 text-white/50 transition hover:bg-white/[0.08] hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+                          className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
                           aria-label="Mover agente para baixo"
                         >
                           <ChevronDown className="h-4 w-4" />
@@ -161,7 +152,7 @@ export function ConversationAgentsPanel({
                           <input type="hidden" name="agentId" value={agent.id} />
                           <button
                             type="submit"
-                            className="flex h-8 w-8 items-center justify-center rounded-md border border-red-400/20 bg-red-400/10 text-red-200 transition hover:bg-red-400/15"
+                            className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30"
                             aria-label="Remover agente"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -178,30 +169,25 @@ export function ConversationAgentsPanel({
       </div>
 
       {isOwner ? (
-        <div className="space-y-4 border-t border-white/10 pt-5">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/45">
-              Adicionar agente
-            </p>
-            <p className="mt-1 text-xs text-white/45">
-              Escolha outros especialistas para a resposta.
-            </p>
-          </div>
+        <div className="space-y-3 border-t border-border pt-5">
+          <p className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
+            adicionar agente
+          </p>
 
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
 
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Buscar agente..."
-              className="h-10 w-full rounded-lg border border-white/10 bg-white/[0.04] px-10 text-sm text-white outline-none placeholder:text-white/35 transition focus:border-emerald-300/40 focus:ring-4 focus:ring-emerald-300/10"
+              placeholder="Buscar agente…"
+              className="h-10 w-full rounded-md border border-input bg-surface-2 px-9 text-sm text-foreground outline-none placeholder:text-muted-foreground transition-colors focus:border-ring focus:ring-2 focus:ring-ring/20"
             />
           </div>
 
-          <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+          <div className="max-h-56 space-y-1 overflow-y-auto pr-1">
             {filteredAgents.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-white/15 px-4 py-6 text-center text-sm text-white/45">
+              <div className="rounded-md border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
                 Nenhum agente encontrado.
               </div>
             ) : (
@@ -218,28 +204,28 @@ export function ConversationAgentsPanel({
                       type="submit"
                       disabled={alreadyAdded}
                       className={cn(
-                        "flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-3 text-left transition",
+                        "flex w-full items-center justify-between gap-3 rounded-md px-3 py-2.5 text-left transition-colors",
                         alreadyAdded
-                          ? "cursor-not-allowed border-transparent opacity-35"
-                          : "border-transparent hover:border-white/10 hover:bg-white/[0.04]"
+                          ? "cursor-not-allowed opacity-40"
+                          : "hover:bg-surface-2"
                       )}
                     >
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-bold text-white">
+                        <p className="truncate text-sm font-medium text-foreground">
                           {agent.nome}
                         </p>
-                        <p className="mt-1 line-clamp-2 text-xs leading-5 text-white/45">
+                        <p className="mt-0.5 line-clamp-1 text-xs leading-5 text-muted-foreground">
                           {shortDescription(agent.descricao)}
                         </p>
                       </div>
 
                       {!alreadyAdded ? (
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/[0.04]">
-                          <Plus className="h-4 w-4 text-emerald-200" />
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-surface-2 text-primary">
+                          <Plus className="h-4 w-4" />
                         </div>
                       ) : (
-                        <span className="shrink-0 rounded-md border border-white/10 px-2 py-1 text-[10px] font-bold uppercase text-white/45">
-                          Adicionado
+                        <span className="shrink-0 font-mono text-[11px] text-subtle-foreground">
+                          adicionado
                         </span>
                       )}
                     </button>
@@ -250,7 +236,7 @@ export function ConversationAgentsPanel({
           </div>
         </div>
       ) : (
-        <div className="rounded-lg border border-white/10 bg-white/[0.04] px-4 py-4 text-xs leading-5 text-white/45">
+        <div className="rounded-md border border-border bg-surface-2 px-4 py-3 text-xs leading-5 text-muted-foreground">
           Apenas o dono da conversa pode gerenciar os agentes.
         </div>
       )}

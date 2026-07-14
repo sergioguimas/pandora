@@ -29,7 +29,7 @@ export function DeleteAgentButton({
 
       <button
         type="submit"
-        className="inline-flex h-10 items-center gap-2 rounded-lg border border-red-400/20 bg-red-400/10 px-3 text-sm font-semibold text-red-200 transition hover:bg-red-400/15"
+        className="inline-flex h-9 items-center gap-2 rounded-md border border-destructive/25 bg-destructive/10 px-3 text-sm font-medium text-destructive transition-colors hover:bg-destructive/15"
       >
         <Trash2 className="h-4 w-4" />
         Excluir

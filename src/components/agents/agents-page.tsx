@@ -39,35 +39,35 @@ export function AgentsPage({
   const activeAgents = agents.filter((agent) => agent.ativo);
 
   return (
-    <main className="flex h-screen overflow-hidden bg-[#050b16] text-white">
+    <main className="flex h-screen overflow-hidden bg-background text-foreground">
       <AgentsSidebar agents={agents} selectedSlug={selectedAgent?.slug} />
 
       <section className="relative flex min-w-0 flex-1 flex-col">
-        <header className="z-10 border-b border-white/10 bg-[#020817]/95 px-5 py-4 backdrop-blur-xl md:px-8">
-          <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
-            <div className="flex min-w-0 items-center gap-4">
-              <div className="hidden h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-emerald-200 sm:flex">
-                <Settings2 className="h-5 w-5" />
+        <header className="z-10 border-b border-border bg-surface-1 px-5 py-3.5 md:px-8">
+          <div className="mx-auto flex max-w-5xl items-center justify-between gap-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="hidden h-9 w-9 items-center justify-center rounded-md border border-border bg-surface-2 text-muted-foreground sm:flex">
+                <Settings2 className="h-4 w-4" />
               </div>
 
               <div className="min-w-0">
-                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-emerald-300/80">
-                  Pandora
+                <p className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
+                  Pandora AI Hub
                 </p>
-                <h1 className="mt-1 truncate text-xl font-bold tracking-tight">
+                <h1 className="truncate text-base font-semibold tracking-tight">
                   Gestão de agentes
                 </h1>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <Link
                 href="/chat"
                 className={cn(
-                  "group hidden h-10 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 text-sm font-semibold text-white/70 transition hover:bg-white/[0.08] hover:text-white md:inline-flex"
+                  "group hidden h-9 items-center gap-2 rounded-md border border-border bg-surface-2 px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground md:inline-flex"
                 )}
               >
-                <ChevronLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
+                <ChevronLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
                 Chat
               </Link>
 
@@ -76,32 +76,32 @@ export function AgentsPage({
           </div>
         </header>
 
-        <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto">
           {selectedAgent ? (
             <div
               key={selectedAgent.id}
-              className="mx-auto flex max-w-6xl flex-col gap-5 px-5 py-6 animate-in fade-in slide-in-from-bottom-4 duration-500 md:px-8"
+              className="mx-auto flex max-w-5xl flex-col gap-4 px-5 py-6 md:px-8"
             >
               <div className="grid gap-3 md:grid-cols-3">
-                <div className="rounded-lg border border-white/10 bg-white/[0.04] px-4 py-3">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/45">
+                <div className="rounded-md border border-border bg-surface-1 px-4 py-3">
+                  <p className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
                     Agentes
                   </p>
-                  <p className="mt-2 text-2xl font-black">{agents.length}</p>
+                  <p className="mt-1.5 text-2xl font-semibold">{agents.length}</p>
                 </div>
 
-                <div className="rounded-lg border border-white/10 bg-white/[0.04] px-4 py-3">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/45">
+                <div className="rounded-md border border-border bg-surface-1 px-4 py-3">
+                  <p className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
                     Ativos
                   </p>
-                  <p className="mt-2 text-2xl font-black">{activeAgents.length}</p>
+                  <p className="mt-1.5 text-2xl font-semibold">{activeAgents.length}</p>
                 </div>
 
-                <div className="rounded-lg border border-white/10 bg-white/[0.04] px-4 py-3">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/45">
+                <div className="rounded-md border border-border bg-surface-1 px-4 py-3">
+                  <p className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
                     Conhecimentos
                   </p>
-                  <p className="mt-2 text-2xl font-black">
+                  <p className="mt-1.5 text-2xl font-semibold">
                     {knowledgeDocuments.length}
                   </p>
                 </div>
@@ -123,15 +123,15 @@ export function AgentsPage({
               <KnowledgeDocumentsList documents={knowledgeDocuments} />
             </div>
           ) : (
-            <div className="flex h-full flex-col items-center justify-center px-6 text-center animate-in fade-in zoom-in-95 duration-700">
-              <div className="mb-5 rounded-lg border border-white/10 bg-white/[0.04] p-6">
-                <LayoutGrid className="h-12 w-12 text-white/25" />
+            <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+              <div className="mb-4 rounded-md border border-border bg-surface-1 p-5">
+                <LayoutGrid className="h-9 w-9 text-muted-foreground" />
               </div>
 
-              <h2 className="text-2xl font-black tracking-tight">
+              <h2 className="text-lg font-semibold tracking-tight">
                 Selecione um agente
               </h2>
-              <p className="mt-3 max-w-[340px] text-sm font-medium leading-6 text-white/55">
+              <p className="mt-1.5 max-w-[340px] text-sm leading-6 text-muted-foreground">
                 Escolha um perfil na barra lateral para ajustar prompts,
                 comportamento e base de conhecimento.
               </p>

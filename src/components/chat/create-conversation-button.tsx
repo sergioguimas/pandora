@@ -20,7 +20,7 @@ export function CreateConversationButton({
 
       <button
         type="submit"
-        className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-white px-3 text-sm font-semibold text-[#020817] transition hover:bg-white/90"
+        className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground transition-colors hover:opacity-90"
       >
         <Plus className="h-4 w-4" />
         Nova

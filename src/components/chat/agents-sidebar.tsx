@@ -99,29 +99,29 @@ export function AgentsSidebar({ agents, activeSlug }: AgentsSidebarProps) {
   }
 
   const sidebarInner = (
-    <div className="flex h-full flex-col bg-[#020817] text-white">
-      <div className="space-y-3 border-b border-white/10 px-5 py-5">
+    <div className="flex h-full flex-col bg-surface-1 text-foreground">
+      <div className="space-y-3 border-b border-border px-4 py-4">
         <Button
           type="button"
           onClick={() => {
             setCreateOpen(true);
             setOpen(false);
           }}
-          className="h-11 w-full rounded-lg bg-white text-sm font-semibold text-[#020817] hover:bg-white/90"
+          className="h-10 w-full rounded-md bg-primary text-sm font-semibold text-primary-foreground hover:opacity-90"
         >
           <Plus className="mr-2 h-4 w-4" />
           Nova conversa
         </Button>
 
-        <div className="grid grid-cols-2 gap-2 rounded-lg border border-white/10 bg-white/5 p-1">
+        <div className="grid grid-cols-2 gap-1 rounded-md border border-border bg-surface-2 p-1">
           <button
             type="button"
             onClick={() => setMode("conversations")}
             className={cn(
-              "flex h-9 items-center justify-center gap-2 rounded-md text-xs font-bold transition",
+              "flex h-8 items-center justify-center gap-2 rounded-sm text-xs font-medium transition-colors",
               mode === "conversations"
-                ? "bg-white text-[#020817]"
-                : "text-white/60 hover:text-white"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
             )}
           >
             <MessageSquare className="h-3.5 w-3.5" />
@@ -132,10 +132,10 @@ export function AgentsSidebar({ agents, activeSlug }: AgentsSidebarProps) {
             type="button"
             onClick={() => setMode("agents")}
             className={cn(
-              "flex h-9 items-center justify-center gap-2 rounded-md text-xs font-bold transition",
+              "flex h-8 items-center justify-center gap-2 rounded-sm text-xs font-medium transition-colors",
               mode === "agents"
-                ? "bg-white text-[#020817]"
-                : "text-white/60 hover:text-white"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
             )}
           >
             <Bot className="h-3.5 w-3.5" />
@@ -146,10 +146,10 @@ export function AgentsSidebar({ agents, activeSlug }: AgentsSidebarProps) {
         <div className="group relative">
           <Search
             className={cn(
-              "absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transition-colors duration-200",
+              "absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transition-colors",
               query
-                ? "text-white/70"
-                : "text-white/35 group-focus-within:text-white/70"
+                ? "text-muted-foreground"
+                : "text-subtle-foreground group-focus-within:text-muted-foreground"
             )}
           />
 
@@ -158,18 +158,18 @@ export function AgentsSidebar({ agents, activeSlug }: AgentsSidebarProps) {
             onChange={(event) => setQuery(event.target.value)}
             placeholder={
               mode === "conversations"
-                ? "Buscar conversas..."
-                : "Buscar agentes..."
+                ? "Buscar conversas…"
+                : "Buscar agentes…"
             }
             className={cn(
-              "h-11 rounded-lg border-white/10 bg-white/5 pl-10 pr-4 text-sm text-white placeholder:text-white/35 transition-all",
-              "outline-none focus:border-white/20 focus:bg-white/8 focus:ring-4 focus:ring-white/5"
+              "h-10 rounded-md border-border bg-surface-2 pl-9 pr-4 text-sm text-foreground placeholder:text-muted-foreground",
+              "outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
             )}
           />
         </div>
       </div>
 
-      <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto">
+      <div className="scrollbar-none min-h-0 flex-1 overflow-y-auto">
         {mode === "conversations" ? (
           <ConversationsSidebarContent
             conversations={filteredConversations}
@@ -183,21 +183,22 @@ export function AgentsSidebar({ agents, activeSlug }: AgentsSidebarProps) {
           />
         ) : (
           <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
-            <div className="mb-4 rounded-full border border-white/10 bg-white/5 p-3">
-              <Search className="h-6 w-6 text-white/35" />
+            <div className="mb-4 rounded-md border border-border bg-surface-2 p-3">
+              <Search className="h-5 w-5 text-muted-foreground" />
             </div>
-            <p className="text-sm font-medium text-white">Nenhum resultado</p>
-            <p className="mt-1 text-xs text-white/50">
-              Não encontramos nada para &quot;{query}&quot;.
+            <p className="text-sm font-medium text-foreground">Nenhum resultado</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Nada encontrado para &quot;{query}&quot;.
             </p>
           </div>
         )}
       </div>
-            <div className="mt-auto border-t border-white/10 p-3">
+
+      <div className="mt-auto border-t border-border p-2">
         <button
           type="button"
           onClick={handleLogout}
-          className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-white/60 transition hover:bg-red-500/10 hover:text-red-200"
+          className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
         >
           <LogOut className="h-4 w-4" />
           <span>Sair</span>
@@ -208,13 +209,9 @@ export function AgentsSidebar({ agents, activeSlug }: AgentsSidebarProps) {
 
   return (
     <>
-      <aside className="z-20 hidden w-full max-w-[320px] border-r border-white/10 md:block lg:max-w-sm">
+      <aside className="z-20 hidden w-full max-w-[320px] border-r border-border md:block lg:max-w-sm">
         {sidebarInner}
-
       </aside>
-
-
-
 
       <div className="md:hidden">
         <div className="fixed left-4 top-4 z-50">
@@ -224,7 +221,7 @@ export function AgentsSidebar({ agents, activeSlug }: AgentsSidebarProps) {
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetContent
             side="left"
-            className="w-[85vw] max-w-sm border-r border-white/10 bg-[#020817]/95 p-0 shadow-2xl backdrop-blur-2xl"
+            className="w-[85vw] max-w-sm border-r border-border bg-surface-1 p-0"
           >
             <SheetTitle className="sr-only">Menu</SheetTitle>
             {sidebarInner}

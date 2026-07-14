@@ -737,10 +737,8 @@ export function ChatPanel({
 
   return (
     <>
-      <div className="relative flex-1 overflow-y-auto bg-[#050b16]">
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-[radial-gradient(circle_at_top,rgba(16,185,129,0.10),transparent_45%)]" />
-
-        <div className="relative mx-auto flex w-full max-w-4xl flex-col gap-4 px-4 py-6 md:px-6">
+      <div className="chat-wallpaper flex-1 overflow-y-auto">
+        <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-4 py-6 md:px-6">
           <ChatMessageList
             messages={renderedMessages}
             agentName={agentName}
@@ -753,16 +751,16 @@ export function ChatPanel({
         </div>
       </div>
 
-      <footer className="relative border-t border-white/10 bg-[#020817]/95 text-white backdrop-blur-2xl">
-        <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-3 px-4 pt-4 text-xs text-white/55 md:px-8">
+      <footer className="border-t border-border bg-surface-1">
+        <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3 px-4 pt-3 font-mono text-xs text-muted-foreground md:px-8">
           <div className="flex min-w-0 items-center gap-2">
-            <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-300" />
-            <span className="truncate font-medium">{statusText}</span>
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+            <span className="truncate">{statusText}</span>
           </div>
 
           {isMultiAgent ? (
-            <span className="hidden shrink-0 rounded-md border border-emerald-300/20 bg-emerald-300/10 px-2.5 py-1 font-semibold text-emerald-100 md:inline-flex">
-              Encadeado
+            <span className="hidden shrink-0 rounded bg-primary-soft px-2 py-0.5 uppercase tracking-wider text-primary md:inline-flex">
+              encadeado
             </span>
           ) : null}
         </div>

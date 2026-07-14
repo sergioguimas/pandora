@@ -95,39 +95,36 @@ export function ChatSidePanel({
   const [activeTab, setActiveTab] = useState<Tab>("conversas");
 
   return (
-    <aside className="hidden w-[380px] shrink-0 border-r border-white/10 bg-[#020817] text-white lg:flex lg:flex-col">
-      <div className="border-b border-white/10 px-5 py-5">
+    <aside className="hidden w-[340px] shrink-0 border-r border-border bg-surface-1 text-foreground lg:flex lg:flex-col">
+      <div className="border-b border-border px-4 py-4">
         <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/8 text-sm font-black">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-surface-2 font-mono text-sm font-semibold text-muted-foreground">
             {getInitials(agentName) || <Bot className="h-5 w-5" />}
           </div>
 
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-emerald-300/80">
-              Conversa ativa
+            <p className="font-mono text-[11px] uppercase tracking-wider text-subtle-foreground">
+              conversa ativa
             </p>
-            <h2 className="mt-1 truncate text-lg font-bold tracking-tight">
+            <h2 className="mt-0.5 truncate text-base font-semibold tracking-tight">
               {agentName}
             </h2>
-            <p className="mt-1 text-xs leading-5 text-white/55">
-              Organize conversas, equipe e agentes da rodada.
-            </p>
           </div>
         </div>
 
-        <div className="mt-5 grid grid-cols-2 gap-2">
+        <div className="mt-4 grid grid-cols-2 gap-2">
           <CreateConversationButton agentSlug={agentSlug} />
 
           <Link
             href="/chat"
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 text-sm font-semibold text-white/75 transition hover:bg-white/[0.08] hover:text-white"
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-surface-2 px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground"
           >
             <Home className="h-4 w-4" />
             Início
           </Link>
         </div>
 
-        <div className="mt-5 grid grid-cols-3 rounded-lg border border-white/10 bg-white/[0.04] p-1">
+        <div className="mt-4 grid grid-cols-3 gap-1 rounded-md border border-border bg-surface-2 p-1">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
@@ -138,10 +135,10 @@ export function ChatSidePanel({
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
                 className={cn(
-                  "flex h-9 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-bold transition",
+                  "flex h-8 items-center justify-center gap-1.5 rounded-sm px-2 text-xs font-medium transition-colors",
                   active
-                    ? "bg-white text-[#020817] shadow-sm"
-                    : "text-white/55 hover:bg-white/[0.06] hover:text-white"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 <Icon className="h-3.5 w-3.5" />
@@ -152,7 +149,7 @@ export function ChatSidePanel({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
         {activeTab === "conversas" ? (
           <AgentConversationsList
             agentSlug={agentSlug}

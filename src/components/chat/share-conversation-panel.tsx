@@ -82,7 +82,7 @@ function MemberCombobox({
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
-        className="flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-background px-3 py-2 text-left text-sm text-foreground outline-none transition hover:bg-accent/50"
+        className="flex h-10 w-full items-center justify-between gap-3 rounded-md border border-input bg-surface-2 px-3 text-left text-sm text-foreground outline-none transition-colors hover:bg-surface-3"
       >
         <span className="min-w-0 truncate">
           {selectedMember
@@ -107,15 +107,15 @@ function MemberCombobox({
       </button>
 
       {open ? (
-        <div className="mt-2 w-full overflow-hidden rounded-xl border border-border bg-background shadow-xl">
+        <div className="mt-2 w-full overflow-hidden rounded-md border border-border bg-surface-2 shadow-lg">
           <div className="border-b border-border p-2">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Buscar por nome ou email..."
-                className="w-full rounded-lg border border-border bg-card px-9 py-2 text-sm text-foreground outline-none transition focus:border-primary"
+                placeholder="Buscar por nome ou email…"
+                className="h-9 w-full rounded-md border border-input bg-surface-1 px-9 text-sm text-foreground outline-none transition-colors focus:border-ring"
                 autoFocus
               />
             </div>
@@ -205,49 +205,49 @@ export function ShareConversationPanel({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-bold text-white/70 shadow-sm backdrop-blur-md transition-all hover:bg-white/[0.08] hover:text-white active:scale-95"
+        className="flex w-full items-center justify-center gap-2 rounded-md border border-border bg-surface-2 px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground active:scale-[0.99]"
       >
         <Users className="h-4 w-4" />
         Compartilhar
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/40 p-4 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="w-full max-w-lg rounded-3xl border border-border/60 bg-black/90 shadow-2xl backdrop-blur-2xl overflow-hidden animate-in zoom-in-95 duration-300">
-            
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg overflow-hidden rounded-xl border border-border bg-surface-1 shadow-lg">
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-border/60 px-6 py-5 bg-primary/5">
+            <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20">
-                  <UserPlus className="h-5 w-5" />
+                <div className="flex h-9 w-9 items-center justify-center rounded-md border border-primary/25 bg-primary/10 text-primary">
+                  <UserPlus className="h-4.5 w-4.5" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold tracking-tight text-foreground">
+                  <h3 className="text-sm font-semibold tracking-tight text-foreground">
                     Participantes
                   </h3>
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest">
-                    Gestão de Acesso
+                  <p className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
+                    gestão de acesso
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={copyConversationLink}
-                  className="rounded-xl border border-border/60 bg-card px-3 py-2 text-sm font-medium transition hover:bg-accent"
-                >
-                  {copied ? "Link copiado ✓" : "Copiar link da conversa"}
-                </button>
               </div>
 
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="rounded-full p-2 text-muted-foreground transition hover:bg-accent hover:text-foreground"
+                aria-label="Fechar"
+                className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground"
               >
-                <X className="h-5 w-5" />
+                <X className="h-4 w-4" />
               </button>
             </div>
 
-            <div className="max-h-[60vh] overflow-y-auto px-6 py-6 space-y-6 custom-scrollbar">
+            <div className="max-h-[60vh] space-y-5 overflow-y-auto px-5 py-5">
+              <button
+                type="button"
+                onClick={copyConversationLink}
+                className="w-full rounded-md border border-border bg-surface-2 px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground"
+              >
+                {copied ? "Link copiado ✓" : "Copiar link da conversa"}
+              </button>
               
               {/* Listagem de Participantes */}
               <div className="space-y-3">
@@ -256,7 +256,7 @@ export function ShareConversationPanel({
                 </p>
                 
                 {participants.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-border/70 px-4 py-8 text-center text-sm text-muted-foreground">
+                  <div className="rounded-md border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
                     Nenhum participante encontrado.
                   </div>
                 ) : (
@@ -267,26 +267,35 @@ export function ShareConversationPanel({
                     return (
                       <div
                         key={participant.id}
-                        className="group flex items-center justify-between gap-3 rounded-2xl border border-border/40 bg-background/50 px-4 py-3 transition-all hover:border-primary/30"
+                        className="group flex items-center justify-between gap-3 rounded-md border border-border bg-surface-2 px-3 py-2.5 transition-colors hover:border-border-strong"
                       >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-bold text-muted-foreground">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-surface-3 font-mono text-xs font-semibold text-muted-foreground">
                             {participant.nome?.slice(0, 2).toUpperCase() || "UN"}
                           </div>
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-bold text-foreground">
-                              {displayName(participant)} {isSelf && "(Você)"}
+                            <p className="truncate text-sm font-medium text-foreground">
+                              {displayName(participant)}{" "}
+                              {isSelf && (
+                                <span className="font-mono text-xs text-subtle-foreground">
+                                  (você)
+                                </span>
+                              )}
                             </p>
                             <div className="flex items-center gap-2">
-                              <span className="text-[10px] font-bold text-muted-foreground/60 truncate">
-                                {participant.email || "Sem e-mail"}
+                              <span className="truncate font-mono text-[11px] text-subtle-foreground">
+                                {participant.email || "sem e-mail"}
                               </span>
-                              <span className={cn(
-                                "flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider",
-                                participant.role === "owner" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
-                              )}>
+                              <span
+                                className={cn(
+                                  "flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider",
+                                  participant.role === "owner"
+                                    ? "bg-primary-soft text-primary"
+                                    : "bg-surface-3 text-muted-foreground"
+                                )}
+                              >
                                 <Shield className="h-2.5 w-2.5" />
-                                {participant.role === "owner" ? "Dono" : "Membro"}
+                                {participant.role === "owner" ? "dono" : "membro"}
                               </span>
                             </div>
                           </div>
@@ -299,8 +308,8 @@ export function ShareConversationPanel({
                             <input type="hidden" name="participantUserId" value={participant.user_id} />
                             <button
                               type="submit"
-                              className="rounded-xl p-2 text-muted-foreground transition hover:bg-red-500/10 hover:text-red-500 active:scale-90"
-                              title="Remover participante"
+                              className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive active:scale-90"
+                              aria-label="Remover participante"
                             >
                               <UserMinus className="h-4 w-4" />
                             </button>
@@ -316,13 +325,13 @@ export function ShareConversationPanel({
 
               {/* Adicionar Novo Membro */}
               {isOwner && (
-                <div className="pt-6 border-t border-border/60">
-                  <p className="text-[11px] font-black uppercase tracking-[0.2em] text-primary/80 px-1 mb-3">
-                    Convidar Membro
+                <div className="border-t border-border pt-5">
+                  <p className="mb-3 px-0.5 font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
+                    convidar membro
                   </p>
 
                   {availableMembers.length === 0 ? (
-                    <div className="rounded-2xl bg-muted/30 px-4 py-4 text-xs font-medium text-muted-foreground text-center italic">
+                    <div className="rounded-md bg-surface-2 px-4 py-4 text-center text-xs text-muted-foreground">
                       Todos os membros já participam desta conversa.
                     </div>
                   ) : (
@@ -331,7 +340,7 @@ export function ShareConversationPanel({
                       setLoading(true);
                       await addConversationParticipantAction(formData);
                       setLoading(false);
-                    }} className="space-y-4">
+                    }} className="space-y-3">
                       <input type="hidden" name="conversationId" value={conversationId} />
                       <input type="hidden" name="agentSlug" value={agentSlug} />
 
@@ -346,9 +355,9 @@ export function ShareConversationPanel({
                       <button
                         type="submit"
                         disabled={!selectedUserId || loading}
-                        className="w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="h-10 w-full rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        {loading ? "Adicionando..." : "Adicionar participante"}
+                        {loading ? "Adicionando…" : "Adicionar participante"}
                       </button>
                     </form>
                   )}
@@ -358,10 +367,10 @@ export function ShareConversationPanel({
 
             {/* Footer Informativo */}
             {!isOwner && (
-              <div className="bg-muted/30 px-6 py-4 flex items-center gap-2">
+              <div className="flex items-center gap-2 border-t border-border bg-surface-2 px-5 py-3">
                 <Shield className="h-3 w-3 text-muted-foreground" />
-                <p className="text-[11px] font-medium text-muted-foreground leading-none">
-                  Somente proprietários podem gerenciar permissões.
+                <p className="text-[11px] text-muted-foreground">
+                  Somente donos podem gerenciar permissões.
                 </p>
               </div>
             )}

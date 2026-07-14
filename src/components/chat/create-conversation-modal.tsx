@@ -109,12 +109,12 @@ export function CreateConversationModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
-      <div className="w-full max-w-lg overflow-hidden rounded-lg border border-white/10 bg-[#020817] text-white shadow-2xl">
-        <div className="flex items-start justify-between gap-4 border-b border-white/10 px-5 py-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+      <div className="w-full max-w-lg overflow-hidden rounded-xl border border-border bg-surface-1 text-foreground shadow-lg">
+        <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
           <div>
-            <h2 className="text-base font-bold">Nova conversa</h2>
-            <p className="mt-1 text-xs text-white/55">
+            <h2 className="text-sm font-semibold">Nova conversa</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
               Combine um ou mais agentes na mesma rodada.
             </p>
           </div>
@@ -123,7 +123,7 @@ export function CreateConversationModal({
             type="button"
             onClick={() => onOpenChange(false)}
             aria-label="Fechar"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-white/70 transition hover:bg-white/[0.08] hover:text-white"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground"
           >
             <X className="h-4 w-4" />
           </button>
@@ -131,39 +131,39 @@ export function CreateConversationModal({
 
         <div className="space-y-4 px-5 py-5">
           <label className="block">
-            <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-white/50">
+            <span className="mb-1.5 block font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
               Título
             </span>
             <input
               placeholder="Ex.: Proposta para cliente Pro"
               value={title}
               onChange={(event) => setTitle(event.target.value)}
-              className="h-11 w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm text-white outline-none placeholder:text-white/35 focus:border-emerald-300/40 focus:ring-4 focus:ring-emerald-300/10"
+              className="h-10 w-full rounded-md border border-input bg-surface-2 px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground transition-colors focus:border-ring focus:ring-2 focus:ring-ring/20"
             />
           </label>
 
           <div>
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-white/50">
+            <div className="mb-1.5 flex items-center justify-between gap-3">
+              <span className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
                 Agentes
               </span>
-              <span className="text-xs font-semibold text-white/55">
+              <span className="font-mono text-[11px] text-subtle-foreground">
                 {selected.length} selecionado{selected.length === 1 ? "" : "s"}
               </span>
             </div>
 
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Filtrar agentes..."
-                className="h-10 w-full rounded-lg border border-white/10 bg-white/[0.04] pl-10 pr-3 text-sm text-white outline-none placeholder:text-white/35 focus:border-emerald-300/40 focus:ring-4 focus:ring-emerald-300/10"
+                placeholder="Filtrar agentes…"
+                className="h-10 w-full rounded-md border border-input bg-surface-2 pl-9 pr-3 text-sm text-foreground outline-none placeholder:text-muted-foreground transition-colors focus:border-ring focus:ring-2 focus:ring-ring/20"
               />
             </div>
           </div>
 
-          <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+          <div className="max-h-72 space-y-1 overflow-y-auto pr-1">
             {filteredAgents.map((agent) => {
               const checked = selected.includes(agent.id);
 
@@ -173,24 +173,24 @@ export function CreateConversationModal({
                   type="button"
                   onClick={() => toggleAgent(agent.id)}
                   className={cn(
-                    "flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left transition",
+                    "flex w-full items-center gap-3 rounded-md border px-3 py-2.5 text-left transition-colors",
                     checked
-                      ? "border-emerald-300/35 bg-emerald-300/10"
-                      : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
+                      ? "border-primary/40 bg-primary-soft"
+                      : "border-border bg-surface-2 hover:bg-surface-3"
                   )}
                 >
                   <span
                     className={cn(
-                      "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border",
+                      "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border",
                       checked
-                        ? "border-emerald-300 bg-emerald-300 text-[#020817]"
-                        : "border-white/20 text-transparent"
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border-strong text-transparent"
                     )}
                   >
                     <Check className="h-3.5 w-3.5" />
                   </span>
 
-                  <span className="min-w-0 flex-1 truncate text-sm font-semibold">
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium">
                     {agent.nome}
                   </span>
                 </button>
@@ -198,18 +198,18 @@ export function CreateConversationModal({
             })}
 
             {filteredAgents.length === 0 ? (
-              <div className="rounded-lg border border-white/10 bg-white/[0.03] px-4 py-8 text-center text-sm text-white/55">
+              <div className="rounded-md border border-border bg-surface-2 px-4 py-8 text-center text-sm text-muted-foreground">
                 Nenhum agente encontrado.
               </div>
             ) : null}
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-3 border-t border-white/10 px-5 py-4">
+        <div className="flex items-center justify-end gap-3 border-t border-border px-5 py-4">
           <button
             type="button"
             onClick={() => onOpenChange(false)}
-            className="rounded-lg border border-white/10 px-4 py-2 text-sm font-semibold text-white/70 transition hover:bg-white/[0.06] hover:text-white"
+            className="rounded-md border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground"
           >
             Cancelar
           </button>
@@ -218,7 +218,7 @@ export function CreateConversationModal({
             type="button"
             onClick={handleCreate}
             disabled={selected.length === 0 || loading}
-            className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-bold text-[#020817] transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-45"
+            className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"
           >
             {loading ? (
               <Loader2 className="h-4 w-4 animate-spin" />

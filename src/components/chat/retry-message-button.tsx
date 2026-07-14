@@ -33,7 +33,7 @@ export function RetryMessageButton({
       type="button"
       onClick={handleClick}
       disabled={loading || disabled}
-      className="mt-3 inline-flex items-center gap-2 rounded-lg border border-amber-400/25 bg-amber-400/10 px-3 py-1.5 text-xs font-semibold text-amber-100 transition hover:bg-amber-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+      className="mt-2.5 inline-flex items-center gap-2 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 font-mono text-xs font-medium text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
     >
       {loading ? (
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -41,7 +41,7 @@ export function RetryMessageButton({
         <RotateCcw className="h-3.5 w-3.5" />
       )}
 
-      {loading ? "Tentando novamente..." : "Tentar novamente"}
+      {loading ? "tentando…" : "tentar novamente"}
     </button>
   );
 }

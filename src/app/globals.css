@@ -2,64 +2,140 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ==========================================================================
+   Pandora AI Hub — sistema de design
+   Escuro neutro (grafite/slate, sem brilhos) + accent verde refinado.
+   Tokens crus em :root/.dark; expostos como utilitários no @theme abaixo.
+   ========================================================================== */
+
 :root {
-  /* Fundo e Texto: Tons levemente mais suaves para reduzir fadiga visual */
-  --background: oklch(0.99 0 0); 
-  --foreground: oklch(0.25 0.01 0);
+  /* Superfícies (claro é a alternativa; o padrão é escuro) */
+  --background: oklch(0.975 0.003 255);
+  --surface-1: oklch(1 0 0);
+  --surface-2: oklch(0.965 0.003 255);
+  --surface-3: oklch(1 0 0);
 
-  /* Cards e Popovers: Bordas sutis e profundidade com opacidade */
-  --card: oklch(1 0 0 / 0.95);
-  --card-foreground: oklch(0.2 0 0);
-  --popover: oklch(1 0 0 / 0.95);
-  --popover-foreground: oklch(0.25 0.01 0);
+  --foreground: oklch(0.22 0.008 255);
+  --muted: oklch(0.965 0.003 255);
+  --muted-foreground: oklch(0.47 0.007 255);
+  --subtle-foreground: oklch(0.58 0.006 255);
 
-  /* Primary: Verde Esmeralda Profissional (Pandora) */
-  --primary: oklch(0.65 0.14 162);
+  --card: oklch(1 0 0);
+  --card-foreground: var(--foreground);
+  --popover: oklch(1 0 0);
+  --popover-foreground: var(--foreground);
+
+  /* Accent verde refinado, dessaturado */
+  --primary: oklch(0.58 0.10 160);
   --primary-foreground: oklch(0.99 0 0);
+  --primary-soft: oklch(0.58 0.10 160 / 0.10);
 
-  /* Tons de Cinza Corporativos */
-  --secondary: oklch(0.96 0.005 0);
-  --secondary-foreground: oklch(0.3 0.01 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.45 0.01 0);
-  --accent: oklch(0.94 0.02 162); /* Leve toque da cor primária no accent */
-  --accent-foreground: oklch(0.25 0.01 0);
+  --secondary: oklch(0.96 0.003 255);
+  --secondary-foreground: oklch(0.26 0.008 255);
+  --accent: oklch(0.95 0.005 255);
+  --accent-foreground: oklch(0.22 0.008 255);
 
-  /* Borders e Inputs: Definição clara mas discreta */
-  --border: oklch(0.92 0.005 0);
-  --input: oklch(0.92 0.005 0);
-  --ring: oklch(0.65 0.14 162);
+  --destructive: oklch(0.58 0.17 25);
+  --destructive-foreground: oklch(0.99 0 0);
 
-  /* Estética Moderna: Bordas levemente menos arredondadas (SaaS Look) */
-  --radius: 0.75rem;
+  --border: oklch(0.90 0.004 255);
+  --border-strong: oklch(0.84 0.005 255);
+  --input: oklch(0.90 0.004 255);
+  --ring: oklch(0.58 0.10 160);
+
+  /* Balões de mensagem (estilo mensageria) */
+  --bubble-user: oklch(0.92 0.05 162);
+  --bubble-user-foreground: oklch(0.28 0.04 160);
+  --bubble-agent: oklch(1 0 0);
+  --bubble-agent-foreground: var(--foreground);
+
+  --radius: 0.5rem;
 }
 
 .dark {
-  /* Fundo Dark: Azul Petróleo Profundo em vez de preto puro */
-  --background: oklch(0.12 0.01 260);
-  --foreground: oklch(0.98 0.005 0);
+  --background: oklch(0.165 0.006 255);
+  --surface-1: oklch(0.205 0.006 255);
+  --surface-2: oklch(0.245 0.007 255);
+  --surface-3: oklch(0.285 0.008 255);
 
-  /* Superfícies Elevadas no Dark */
-  --card: oklch(0.2 0.01 260 / 0.98);
-  --card-foreground: oklch(0.98 0.005 0);
-  --popover: oklch(0.2 0.02 260 / 0.9);
-  --popover-foreground: oklch(0.98 0.005 0);
+  --foreground: oklch(0.955 0.003 255);
+  --muted: oklch(0.245 0.007 255);
+  --muted-foreground: oklch(0.70 0.006 255);
+  --subtle-foreground: oklch(0.56 0.006 255);
 
-  /* Primary mantém a consistência da marca */
-  --primary: oklch(0.7 0.14 162);
-  --primary-foreground: oklch(0.1 0 0);
+  --card: oklch(0.205 0.006 255);
+  --card-foreground: var(--foreground);
+  --popover: oklch(0.245 0.008 255);
+  --popover-foreground: var(--foreground);
 
-  --secondary: oklch(0.25 0.02 260);
-  --secondary-foreground: oklch(0.98 0.005 0);
-  --muted: oklch(0.25 0.02 260);
-  --muted-foreground: oklch(0.65 0.01 0);
-  --accent: oklch(0.28 0.03 162 / 0.2);
-  --accent-foreground: oklch(0.98 0.005 0);
+  --primary: oklch(0.72 0.11 160);
+  --primary-foreground: oklch(0.16 0.03 160);
+  --primary-soft: oklch(0.72 0.11 160 / 0.14);
 
-  /* Bordas mais visíveis no dark para separação de componentes */
-  --border: oklch(0.32 0.02 260);
-  --input: oklch(0.32 0.02 260);
-  --ring: oklch(0.7 0.14 162);
+  --secondary: oklch(0.245 0.007 255);
+  --secondary-foreground: oklch(0.955 0.003 255);
+  --accent: oklch(0.27 0.007 255);
+  --accent-foreground: oklch(0.955 0.003 255);
+
+  --destructive: oklch(0.64 0.17 22);
+  --destructive-foreground: oklch(0.98 0 0);
+
+  --border: oklch(0.30 0.006 255);
+  --border-strong: oklch(0.37 0.006 255);
+  --input: oklch(0.30 0.006 255);
+  --ring: oklch(0.72 0.11 160);
+
+  --bubble-user: oklch(0.36 0.055 162);
+  --bubble-user-foreground: oklch(0.97 0.015 160);
+  --bubble-agent: oklch(0.245 0.007 255);
+  --bubble-agent-foreground: var(--foreground);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-foreground: var(--foreground);
+
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-subtle-foreground: var(--subtle-foreground);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
+
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-bubble-user: var(--bubble-user);
+  --color-bubble-user-foreground: var(--bubble-user-foreground);
+  --color-bubble-agent: var(--bubble-agent);
+  --color-bubble-agent-foreground: var(--bubble-agent-foreground);
+
+  --font-sans: var(--font-plex-sans), system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --radius-xl: calc(var(--radius) + 6px);
 }
 
 * {
@@ -69,24 +145,36 @@
 html,
 body {
   height: 100%;
-  scroll-behavior: smooth;
 }
 
 body {
-  /* Gradiente radial sutil para profundidade visual (toque moderno) */
-  background:
-    radial-gradient(circle at top, color-mix(in oklab, var(--primary) 4%, transparent), transparent 35%),
-    radial-gradient(circle at bottom left, color-mix(in oklab, var(--primary) 3%, transparent), transparent 30%),
-    var(--background);
+  background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans), system-ui, sans-serif;
+  font-family: var(--font-plex-sans), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Custom Scrollbar para estética corporativa */
+/* Papel de parede sutil da área de conversa — grade técnica discreta, sem glow */
+.chat-wallpaper {
+  background-color: var(--background);
+  background-image: radial-gradient(
+    var(--border) 0.5px,
+    transparent 0.5px
+  );
+  background-size: 22px 22px;
+}
+
+.dark .chat-wallpaper {
+  background-image: radial-gradient(
+    color-mix(in oklab, var(--border) 55%, transparent) 0.5px,
+    transparent 0.5px
+  );
+}
+
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -94,10 +182,17 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 10px;
+  background: var(--border-strong);
+  border-radius: 8px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--muted-foreground);
+}
+
+.scrollbar-none {
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
 }

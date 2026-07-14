@@ -14,64 +14,78 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const created = params?.created;
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-zinc-950 px-6 text-zinc-100">
-      <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-xl">
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold">Entrar na Pandora</h1>
-          <p className="mt-2 text-sm text-zinc-400">
-            Acesse sua central de agentes.
-          </p>
+    <main className="flex min-h-screen items-center justify-center bg-background px-6 text-foreground">
+      <div className="w-full max-w-sm">
+        <div className="mb-8 flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary font-mono text-lg font-semibold text-primary-foreground">
+            P
+          </div>
+          <div className="leading-tight">
+            <p className="text-sm font-semibold">Pandora AI Hub</p>
+            <p className="font-mono text-xs text-muted-foreground">
+              central de agentes
+            </p>
+          </div>
         </div>
 
+        <h1 className="text-xl font-semibold tracking-tight">Entrar</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Acesse sua central de agentes.
+        </p>
+
         {created === "1" && (
-          <div className="mb-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
-            Conta criada com sucesso. Agora é só entrar.
+          <div className="mt-5 rounded-md border border-primary/30 bg-primary-soft px-4 py-3 text-sm text-primary">
+            Conta criada. Agora é só entrar.
           </div>
         )}
 
         {error === "invalid_credentials" && (
-          <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          <div className="mt-5 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
             Email ou senha inválidos.
           </div>
         )}
 
         {error === "signup_failed" && (
-          <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          <div className="mt-5 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
             Não foi possível criar a conta.
           </div>
         )}
 
-        <form action={signInWithEmailPassword} className="space-y-4">
-          <div className="space-y-2">
-            <label className="text-sm text-zinc-300">Email</label>
+        <form action={signInWithEmailPassword} className="mt-6 space-y-4">
+          <div className="space-y-1.5">
+            <label className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+              Email
+            </label>
             <input
               name="email"
               type="email"
               required
-              className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm outline-none"
+              className="h-11 w-full rounded-md border border-input bg-surface-1 px-3.5 text-sm outline-none transition-colors focus:border-ring focus:ring-2 focus:ring-ring/25"
             />
           </div>
 
-          <div className="space-y-2">
-            <label className="text-sm text-zinc-300">Senha</label>
+          <div className="space-y-1.5">
+            <label className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+              Senha
+            </label>
             <input
               name="password"
               type="password"
               required
-              className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm outline-none"
+              className="h-11 w-full rounded-md border border-input bg-surface-1 px-3.5 text-sm outline-none transition-colors focus:border-ring focus:ring-2 focus:ring-ring/25"
             />
           </div>
 
-          <button className="w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-medium text-white transition hover:bg-emerald-500">
+          <button className="h-11 w-full rounded-md bg-primary text-sm font-semibold text-primary-foreground transition-colors hover:opacity-90">
             Entrar
           </button>
         </form>
 
-        <p className="mt-6 text-center text-sm text-zinc-400">
+        <p className="mt-6 text-center text-sm text-muted-foreground">
           Ainda não tem conta?{" "}
           <Link
             href="/cadastro"
-            className="font-medium text-emerald-400 hover:text-emerald-300"
+            className="font-medium text-primary hover:underline"
           >
             Criar conta
           </Link>

@@ -21,13 +21,13 @@ export function ChatTypingIndicator({
     <div className={cn(inline ? "flex items-center" : "flex w-full justify-start")}>
       <div
         className={cn(
-          "flex items-center gap-2 rounded-[2rem] border border-border/60 bg-card/70 px-4 py-3 shadow-sm",
-          inline && "border-0 bg-transparent p-0 shadow-none"
+          "flex items-center gap-2 rounded-lg rounded-tl-sm border border-border bg-bubble-agent px-3.5 py-2.5",
+          inline && "border-0 bg-transparent p-0"
         )}
       >
-        <span className="text-sm text-muted-foreground">{label}</span>
+        <span className="font-mono text-xs text-muted-foreground">{label}</span>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1">
           {[0, 1, 2].map((index) => (
             <motion.span
               key={index}
@@ -40,7 +40,7 @@ export function ChatTypingIndicator({
                 ease: "easeInOut",
                 delay: index * 0.15,
               }}
-              className="h-2 w-2 rounded-full bg-muted-foreground/80"
+              className="h-1.5 w-1.5 rounded-full bg-muted-foreground"
             />
           ))}
         </div>
