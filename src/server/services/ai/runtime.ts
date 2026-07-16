@@ -53,18 +53,27 @@ export class ModelGenerationError extends Error {
   code: ModelErrorCode;
   status?: number;
   partialContent?: string;
+  /**
+   * Se vale a pena reenviar. Carregado explicitamente porque o veredito do
+   * `classifyModelError` era perdido no wrap: tudo virava retryable, e o
+   * usuário via "tentar novamente" até para erro que nunca funcionaria
+   * (prompt bloqueado por safety, provider não implementado).
+   */
+  retryable: boolean;
 
   constructor(params: {
     message: string;
     code: ModelErrorCode;
     status?: number;
     partialContent?: string;
+    retryable?: boolean;
   }) {
     super(params.message);
     this.name = "ModelGenerationError";
     this.code = params.code;
     this.status = params.status;
     this.partialContent = params.partialContent;
+    this.retryable = params.retryable ?? true;
   }
 }
 

@@ -115,6 +115,12 @@ npm run dev
 | `npm run lint` | ESLint |
 | `npm test` | Testes (vitest) — não precisa de banco nem de API key |
 | `npm run test:watch` | Testes em watch |
+| `npm run reembed:knowledge` | Manutenção: regera os embeddings da base (ver aviso abaixo) |
+
+> ⚠️ **`taskType` dos embeddings é um par.** Query usa `RETRIEVAL_QUERY` e documento usa
+> `RETRIEVAL_DOCUMENT`; misturar produz vetores incomparáveis. Se mudar qualquer coisa
+> em `providers/gemini-embeddings.ts`, rode `npm run reembed:knowledge` — senão os
+> chunks antigos ficam num espaço vetorial diferente e o RAG deixa de encontrá-los.
 
 O CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) roda lint → testes →
 type-check → build em push na `main` e em PR.

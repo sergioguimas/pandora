@@ -1,5 +1,10 @@
-import { getGeminiClient } from "@/lib/gemini/client";
 import { createClient } from "@/lib/supabase/server";
+import {
+  streamModel,
+  type ModelContents,
+  type ModelStream,
+  type ModelStreamParams,
+} from "@/server/services/ai/providers/stream";
 import { getMessagesByConversationId } from "@/server/repositories/messages-repository";
 import { matchKnowledge } from "@/server/repositories/knowledge-repository";
 import { listAgentsByConversation } from "@/server/repositories/conversation-agents-repository";
@@ -92,11 +97,6 @@ export type OrchestrationEvent =
   | { type: "final"; message: Message }
   | { type: "error"; error: string };
 
-type ModelContents = Array<{
-  role: "user" | "model";
-  parts: Array<{ text: string }>;
-}>;
-
 /** Dependências externas. Injetáveis para teste. */
 export type OrchestratorDeps = {
   getHistory: (conversationId: string) => Promise<Message[]>;
@@ -113,12 +113,7 @@ export type OrchestratorDeps = {
     count?: number;
   }) => Promise<Array<{ content: string }>>;
   saveMessage: typeof saveMessage;
-  streamModel: (params: {
-    model: string;
-    contents: ModelContents;
-    temperature: number;
-    maxOutputTokens: number;
-  }) => Promise<AsyncIterable<{ text?: string }>>;
+  streamModel: (params: ModelStreamParams) => Promise<ModelStream>;
 };
 
 // --- Agente principal da conversa (fallback quando não há conversation_agents) ---
@@ -168,18 +163,7 @@ export const defaultDeps: OrchestratorDeps = {
   generateQueryEmbedding,
   matchKnowledge,
   saveMessage,
-  streamModel: async (params) => {
-    const ai = getGeminiClient();
-
-    return ai.models.generateContentStream({
-      model: params.model,
-      contents: params.contents,
-      config: {
-        temperature: params.temperature,
-        maxOutputTokens: params.maxOutputTokens,
-      },
-    });
-  },
+  streamModel,
 };
 
 // --- Filtro de histórico ------------------------------------------------------
@@ -396,6 +380,7 @@ function buildClientOnlyMessage(params: {
  */
 async function* streamAnswer(params: {
   deps: OrchestratorDeps;
+  provider: string;
   model: string;
   temperature: number;
   maxOutputTokens: number;
@@ -414,6 +399,7 @@ async function* streamAnswer(params: {
     responseStream = await withTimeout(
       withRetryBeforeStreaming(() =>
         params.deps.streamModel({
+          provider: params.provider,
           model: params.model,
           contents: params.contents,
           temperature: params.temperature,
@@ -435,6 +421,7 @@ async function* streamAnswer(params: {
       code: classified.code,
       status: classified.status,
       partialContent: accumulated,
+      retryable: classified.retryable,
     });
   }
 
@@ -484,6 +471,8 @@ async function* streamAnswer(params: {
       code: receivedAnyToken ? "MODEL_STREAM_INTERRUPTED" : classified.code,
       status: classified.status,
       partialContent: accumulated,
+      // Corte no meio do stream vale retentar; senão, respeita o veredito.
+      retryable: receivedAnyToken ? true : classified.retryable,
     });
   }
 
@@ -628,6 +617,7 @@ export async function* orchestrateConversation(
       try {
         fullResponse = yield* streamAnswer({
           deps,
+          provider: agent.provider,
           model: agent.model,
           temperature: agent.temperature,
           maxOutputTokens: maxOutputTokensFor(agent.modo_resposta),
@@ -662,7 +652,7 @@ export async function* orchestrateConversation(
             code: error.code,
             status: error.status,
             message: error.message,
-            retryable: true,
+            retryable: error.retryable,
           };
 
           fullResponse = error.partialContent?.trim() || "";
@@ -837,6 +827,7 @@ export async function* orchestrateConversation(
         content,
         savedUserMessage,
         // Síntese segue o primeiro agente da cadeia, igual à escolha de modelo.
+        provider: agentsToUse[0]?.provider ?? "gemini",
         model: agentsToUse[0]?.model ?? "gemini-2.0-flash",
         modoResposta: agentsToUse[0]?.modo_resposta ?? null,
         responses: previousAgentResponses,
@@ -859,6 +850,7 @@ async function* runSynthesis(params: {
   conversationId: string;
   content: string;
   savedUserMessage: Message;
+  provider: string;
   model: string;
   modoResposta?: ResponseMode | string | null;
   responses: Array<{ agentId: string; agentName: string; content: string }>;
@@ -874,6 +866,7 @@ async function* runSynthesis(params: {
   try {
     finalSynthesis = yield* streamAnswer({
       deps,
+      provider: params.provider,
       model: params.model,
       temperature: 0.4,
       maxOutputTokens: maxOutputTokensFor(params.modoResposta),

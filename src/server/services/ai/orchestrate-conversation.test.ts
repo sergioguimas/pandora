@@ -319,6 +319,45 @@ describe("orchestrateConversation — modo de resposta (PD-10)", () => {
   });
 });
 
+describe("orchestrateConversation — provider do agente (PD-12)", () => {
+  it("repassa o provider configurado no agente", async () => {
+    const providers: string[] = [];
+
+    await collect(
+      makeDeps({
+        listAgents: async () => [makeAgent({ provider: "gemini" })],
+        streamModel: async (params: { provider: string }) => {
+          providers.push(params.provider);
+          return tokenStream(RESPOSTA_OK);
+        },
+      })
+    );
+
+    // Antes do PD-12 o provider era ignorado: um agente 'openai' gerava com
+    // Gemini em silêncio. Agora ele chega ao despacho.
+    expect(providers).toEqual(["gemini"]);
+  });
+
+  it("provider sem implementação vira erro não-retryable, não fallback silencioso", async () => {
+    const events = await collect(
+      makeDeps({
+        listAgents: async () => [makeAgent({ provider: "openai" })],
+        // deps real: despacha de verdade e rejeita provider não implementado
+        streamModel: (await import("@/server/services/ai/providers/stream"))
+          .streamModel,
+      })
+    );
+
+    const erro = events.find((e) => e.type === "agent_error") as
+      | Extract<OrchestrationEvent, { type: "agent_error" }>
+      | undefined;
+
+    expect(erro?.message).toContain("não implementado");
+    // Reenviar não resolveria — não faz sentido oferecer "tentar novamente".
+    expect(erro?.retryable).toBe(false);
+  });
+});
+
 describe("orchestrateConversation — resposta truncada", () => {
   it("avisa quando a resposta termina em marcação aberta", async () => {
     const events = await collect(

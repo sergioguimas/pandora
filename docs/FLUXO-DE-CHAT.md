@@ -111,8 +111,9 @@ Dois modos, decididos por quantos agentes a conversa tem:
 `chunkText` (1200 chars, overlap 200) → embedding por chunk (`gemini-embedding-001`,
 768d) → insere chunks → marca documento `ready`.
 
-> Otimização pendente: query e documento usam o mesmo embedding sem `taskType`
-> (`RETRIEVAL_QUERY` vs `RETRIEVAL_DOCUMENT`), o que o Gemini suporta e melhora recall.
+> **`taskType` é um par, não um detalhe** (`PD-11`): query usa `RETRIEVAL_QUERY` e
+> documento usa `RETRIEVAL_DOCUMENT`. A doc do Gemini: *"mismatching these produces
+> incomparable embeddings"*. Mudou um lado? Re-embeddar tudo: `npm run reembed:knowledge`.
 
 ## 4. Retry (regenerar uma resposta)
 
@@ -199,6 +200,12 @@ Desde o `PD-07` a responsabilidade está separada:
 | Adaptador HTTP | `api/chat/stream/route.ts` (~76 linhas) | auth, persistir a msg do usuário, serializar eventos como SSE |
 | Orquestração | `services/ai/orchestrate-conversation.ts` | cadeia de agentes, RAG, síntese, montagem de prompt |
 | Runtime | `services/ai/runtime.ts` | erro/retry/timeout/persistência — **compartilhado com o retry** |
+| Providers | `services/ai/providers/stream.ts` | despacho por `agent.provider`; **único lugar que fala com um modelo** |
+
+**Para somar um provider** (Gemini + OpenAI + outros estão no roadmap): escreva a função
+de streaming, registre no `switch` de `streamModel`, e inclua o nome na constraint
+`agents_provider_check` e no tipo `AgentProvider`. O resto do fluxo já é agnóstico.
+Provider sem implementação **falha alto** — nunca cai em outro escondido (`PD-12`).
 
 O orquestrador é um **async generator** que emite `OrchestrationEvent`; o handler só
 traduz para SSE. Consequências práticas:
@@ -216,6 +223,9 @@ traduz para SSE. Consequências práticas:
 - Precedência do status: `failed` vence `partial`. Stream cortado com exceção →
   `status: "failed"` + `partial: true` no evento. `status: "partial"` é só quando **não**
   houve exceção e a heurística acusou truncamento.
+- `retryable` vem do `classifyModelError`, **não** é sempre `true` (`PD-21`). Corte no
+  meio do stream é retentável; safety block e provider inexistente não são — o botão
+  "tentar novamente" não deve aparecer para o que nunca vai funcionar.
 - Falha do RAG **não** derruba a rodada — o agente responde sem conhecimento.
 - Falha do provedor vira mensagem persistida e `retryable`, que é o que habilita o
   botão "tentar novamente".

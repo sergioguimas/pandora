@@ -22,8 +22,9 @@ tem id, severidade, arquivos e ação recomendada. Use os ids (`PD-xx`) em commi
 9. ~~`PD-10` + `PD-19` — modo de resposta por agente e o piso de 40 chars~~ ✅
 10. ~~`PD-04` cobrir o núcleo com testes + CI~~ ✅ *(81 testes; GitHub Actions)*
 11. ~~`PD-18` baseline — migrations voltam a reproduzir produção~~ ✅ *(verificado do zero)*
-12. `PD-04b` testes de RLS ← **próximo** (destravado pelo `PD-18`)
-13. `PD-11` `taskType` nos embeddings · `PD-12` provider OpenAI · `PD-13` ✅ *(resolvido pelo baseline)*
+12. ~~`PD-11` `taskType` nos embeddings · `PD-12` terreno multi-provider · `PD-21` `retryable`~~ ✅
+13. ~~`PD-20` re-embeddar a base (27/27)~~ ✅
+14. `PD-04b` testes de RLS ← **próximo** (destravado pelo `PD-18`; é o último item em aberto)
 
 ---
 
@@ -46,20 +47,6 @@ tem id, severidade, arquivos e ação recomendada. Use os ids (`PD-xx`) em commi
 ---
 
 ## 🟡 Baixa
-
-### PD-11 — Embeddings sem `taskType`
-- **Onde**: `src/server/services/ai/providers/gemini-embeddings.ts`.
-- **Problema**: query e documento usam a mesma chamada sem `RETRIEVAL_QUERY` /
-  `RETRIEVAL_DOCUMENT`, o que o Gemini suporta e melhora o recall do RAG.
-- **Ação**: diferenciar `taskType` entre `generateQueryEmbedding` e
-  `generateDocumentEmbedding`.
-
-### PD-12 — Provider OpenAI declarado mas não implementado
-- **Onde**: constraint `agents_provider_check` aceita `'openai'`, e o tipo `RuntimeAgent`
-  declara `provider: "gemini" | "openai"` — mas só existe código para Gemini
-  (o dispatcher foi removido no `PD-03`).
-- **Ação**: implementar de fato **ou** restringir a constraint a `'gemini'` até existir,
-  para não sugerir uma capacidade inexistente.
 
 ### PD-14 — README ↔ código (manter sincronizado)
 - **Ação**: `PD-01` corrigiu o descompasso principal. Manter a regra: **toda mudança
@@ -344,6 +331,44 @@ migração de dado é evento único e pertence ao histórico, não a um arquivo 
 ordenação do `db push`. Resolvido junto do `PD-18`: o arquivo foi para o archive e não
 está mais no caminho da CLI.
 
+### PD-11 — Embeddings sem `taskType` 🟡
+Query e documento usavam a mesma chamada, sem `taskType`. A doc do Gemini é explícita:
+*"Use RETRIEVAL_QUERY for queries; RETRIEVAL_DOCUMENT for documents to be retrieved.
+**Mismatching these produces incomparable embeddings**"*. Agora cada função usa o seu
+par, travado por teste (inclusive um que falha se os dois empatarem).
+
+> ⚠️ **Não é uma mudança isolada**: o default do `taskType` omitido **não é
+> documentado**, então os chunks antigos estão num espaço vetorial desconhecido. Sem
+> re-embeddar, isto **piora** o recall em vez de melhorar — ver `PD-20`.
+
+### PD-12 — Provider: terreno preparado para multi-provider 🟡
+A constraint sempre aceitou `provider = 'openai'`, mas o código chamava o Gemini
+direto e **ignorava o campo**: um agente marcado como `openai` gerava com Gemini **em
+silêncio**. Bug real, não só inconsistência de schema.
+
+Decisão do produto: manter a porta aberta (o roadmap prevê Gemini + OpenAI + outros,
+via um "mini MCP caseiro"). Então, em vez de restringir a constraint:
+
+- Criado [`providers/stream.ts`](../src/server/services/ai/providers/stream.ts) — ponto
+  único de despacho. `gemini` implementado; qualquer outro **falha alto** com mensagem
+  clara, em vez de cair no Gemini escondido.
+- Orquestrador e rota de retry passaram a repassar `agent.provider` (nenhum dos dois
+  fazia isso).
+- Para somar um provider: escrever a função de streaming, registrar no `switch`, incluir
+  na constraint e no tipo. O resto (retry, timeout, classificação de erro, SSE) já é
+  agnóstico de provider — vive no `runtime.ts`.
+
+### PD-21 — `retryable` era descartado no wrap do erro 🟠
+Descoberto ao testar o `PD-12`. O `classifyModelError` decide se vale reenviar, mas o
+`ModelGenerationError` não carregava essa decisão e o catch do orquestrador forçava
+`retryable: true` para **qualquer** erro dessa classe. Resultado: prompt bloqueado por
+safety ou provider inexistente mostravam "tentar novamente" — que nunca funcionaria.
+
+O erro agora carrega `retryable` e o orquestrador o respeita. Corte no meio do stream
+segue retentável (é o caso em que reenviar de fato ajuda); o veredito do
+`classifyModelError` vale para o resto. Comportamento herdado do god file original e
+preservado sem querer no `PD-07` — só apareceu quando um teste cobriu o caso.
+
 ### PD-16 — Policies duplicadas em `conversation_agents` 🟠
 A última migration recriara regras owner-only via `conversations.user_id` sem remover as
 por participante. Removidas as quatro duplicadas; restaram só as de participante/dono.
@@ -370,4 +395,6 @@ por participante. Removidas as quatro duplicadas; restaram só as de participant
 | 2026-07-15 | PD-19 | Novo: `isProbablyIncompleteAnswer` marca como truncada qualquer resposta < 40 chars. Descoberto ao escrever os testes do PD-07. |
 | 2026-07-15 | PD-10 + PD-19 | Migration `20260715160000` aplicada. `modo_resposta` (leve/medio/alto) por agente, presets em `lib/response-mode.ts`, piso de 40 chars corrigido. |
 | 2026-07-15 | PD-04 | Suíte em **81 testes** (RAG fallback, chunkText, runtime, helpers de orquestração) + CI no GitHub Actions (lint/test/typecheck/build). Build validado sem `.env.local`. |
-| 2026-07-16 | PD-18 + PD-13 | Migrations 1–20 arquivadas; baseline `20260716000000` gerado do dump real. **Verificado**: banco limpo + só `migrations/` reproduz prod (12 funções, 43 policies, 6 triggers, 13 tabelas, 101 colunas, 52 índices). Falta rodar `migration repair` no remoto. |
+| 2026-07-16 | PD-18 + PD-13 | Migrations 1–20 arquivadas; baseline `20260716000000` gerado do dump real. **Verificado**: banco limpo + só `migrations/` reproduz prod (12 funções, 43 policies, 6 triggers, 13 tabelas, 101 colunas, 52 índices). `migration repair` aplicado: local e remoto listam só o baseline. |
+| 2026-07-16 | PD-11 + PD-12 + PD-21 | `taskType` nos embeddings; despacho por provider em `providers/stream.ts` (agente `openai` gerava com Gemini em silêncio); `retryable` deixa de ser descartado no wrap. **89 testes.** |
+| 2026-07-16 | PD-20 | `npm run reembed:knowledge` executado: 27/27 chunks regerados com `RETRIEVAL_DOCUMENT`. Query e documento voltam ao mesmo espaço vetorial. |

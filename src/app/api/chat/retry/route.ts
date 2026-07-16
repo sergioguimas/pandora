@@ -4,6 +4,7 @@ import { getGeminiClient } from "@/lib/gemini/client";
 import { getMessagesByConversationId } from "@/server/repositories/messages-repository";
 import { matchKnowledge } from "@/server/repositories/knowledge-repository";
 import { generateQueryEmbedding } from "@/server/services/ai/providers/gemini-embeddings";
+import { streamModel } from "@/server/services/ai/providers/stream";
 import {
   classifyModelError,
   maxOutputTokensFor,
@@ -331,13 +332,12 @@ export async function POST(request: NextRequest) {
 
               const responseStream = await withRetryBeforeStreaming(
                 () =>
-                  ai.models.generateContentStream({
+                  streamModel({
+                    provider: runtimeAgent.provider,
                     model: runtimeAgent.model,
                     contents,
-                    config: {
-                      temperature: runtimeAgent.temperature,
-                      maxOutputTokens: maxOutputTokensFor(runtimeAgent.modo_resposta),
-                    },
+                    temperature: runtimeAgent.temperature,
+                    maxOutputTokens: maxOutputTokensFor(runtimeAgent.modo_resposta),
                   }),
                 {
                   retries: 2,
