@@ -33,6 +33,12 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# Dumps de DADOS do Supabase — contêm dados reais (auth.users com e-mails e
+# hashes de senha, mensagens das conversas, perfis, embeddings). Nunca versionar.
+# Snapshots de SCHEMA (sem dados) podem ser commitados: servem de referência,
+# já que as migrations sofreram drift. Ver docs/DIVIDA-TECNICA.md → PD-18.
+supabase/schema/*_data_*.sql
+
 # vercel
 .vercel
 

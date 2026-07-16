@@ -144,6 +144,7 @@ export async function listKnowledgeDocumentsByAgent(
 
 export async function createKnowledgeDocument(params: {
   agentId: string;
+  organizationId: string;
   conversationId?: string | null;
   knowledgeSpaceId?: string | null;
   scope: KnowledgeScope;
@@ -158,6 +159,7 @@ export async function createKnowledgeDocument(params: {
     .from("knowledge_documents")
     .insert({
       agent_id: params.agentId,
+      organization_id: params.organizationId,
       conversation_id: params.conversationId ?? null,
       knowledge_space_id: params.knowledgeSpaceId ?? null,
       scope: params.scope,
@@ -182,6 +184,7 @@ export async function createKnowledgeDocument(params: {
 export async function insertKnowledgeChunks(params: {
   documentId: string;
   agentId: string;
+  organizationId: string;
   conversationId?: string | null;
   knowledgeSpaceId?: string | null;
   scope: KnowledgeScope;
@@ -197,6 +200,7 @@ export async function insertKnowledgeChunks(params: {
   const payload = params.chunks.map((chunk) => ({
     document_id: params.documentId,
     agent_id: params.agentId,
+    organization_id: params.organizationId,
     conversation_id: params.conversationId ?? null,
     knowledge_space_id: params.knowledgeSpaceId ?? null,
     scope: params.scope,
@@ -258,7 +262,12 @@ export async function deleteKnowledgeDocument(documentId: string) {
   }
 }
 
-function extractSearchTerms(text: string) {
+/**
+ * Termos usados no fallback textual do RAG (quando a busca sem\u00e2ntica n\u00e3o
+ * retorna nada). Descarta acentos, pontua\u00e7\u00e3o e termos com menos de 4 chars,
+ * limitando a 8 termos.
+ */
+export function extractSearchTerms(text: string) {
   return text
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -269,7 +278,8 @@ function extractSearchTerms(text: string) {
     .slice(0, 8);
 }
 
-function scoreKeywordMatch(content: string, terms: string[]) {
+/** Quantos dos `terms` aparecem no conte\u00fado (compara\u00e7\u00e3o sem acento/caixa). */
+export function scoreKeywordMatch(content: string, terms: string[]) {
   const normalized = content
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -284,6 +294,7 @@ export async function matchKnowledge(params: {
   agentId: string;
   conversationId: string;
   embedding: number[];
+  knowledgeSpaceId?: string | null;
   query?: string;
   threshold?: number;
   count?: number;
@@ -292,9 +303,13 @@ export async function matchKnowledge(params: {
 
   const matchCount = params.count ?? 8;
 
+  // Assinatura de 6 args (canônica). Antes havia 3 overloads e o app chamava a
+  // de 5, que ignorava scope='space' — conhecimento de space nunca era
+  // recuperado. Ver docs/DIVIDA-TECNICA.md → PD-15.
   const { data, error } = await supabase.rpc("match_agent_knowledge", {
     p_agent_id: params.agentId,
     p_conversation_id: params.conversationId,
+    p_knowledge_space_id: params.knowledgeSpaceId ?? null,
     p_query_embedding: params.embedding,
     p_match_threshold: params.threshold ?? 0.35,
     p_match_count: matchCount,
@@ -319,6 +334,20 @@ export async function matchKnowledge(params: {
     return semanticMatches;
   }
 
+  // Espelha os mesmos escopos da RPC. O filtro de agente fica DENTRO do ramo
+  // `global`: conhecimento de space é compartilhado entre os agentes do space,
+  // então não pode ser filtrado por agent_id.
+  const scopeFilters = [
+    `and(scope.eq.global,agent_id.eq.${params.agentId})`,
+    `and(scope.eq.conversation,conversation_id.eq.${params.conversationId})`,
+  ];
+
+  if (params.knowledgeSpaceId) {
+    scopeFilters.push(
+      `and(scope.eq.space,knowledge_space_id.eq.${params.knowledgeSpaceId})`
+    );
+  }
+
   const { data: fallbackData, error: fallbackError } = await supabase
     .from("knowledge_chunks")
     .select(
@@ -327,6 +356,7 @@ export async function matchKnowledge(params: {
       document_id,
       agent_id,
       conversation_id,
+      knowledge_space_id,
       scope,
       chunk_index,
       content,
@@ -337,10 +367,7 @@ export async function matchKnowledge(params: {
       )
     `
     )
-    .eq("agent_id", params.agentId)
-    .or(
-      `scope.eq.global,and(scope.eq.conversation,conversation_id.eq.${params.conversationId})`
-    )
+    .or(scopeFilters.join(","))
     .eq("knowledge_documents.status", "ready")
     .limit(80);
 
@@ -357,6 +384,7 @@ export async function matchKnowledge(params: {
         document_id: row.document_id,
         agent_id: row.agent_id,
         conversation_id: row.conversation_id,
+        knowledge_space_id: row.knowledge_space_id ?? null,
         scope: row.scope,
         chunk_index: row.chunk_index,
         content: row.content,

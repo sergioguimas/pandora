@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancela execuções antigas do mesmo branch quando chega um push novo.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Mesma major do Dockerfile (node:22-alpine).
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Testes
+        run: npm test
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      # O build é o único passo que pega import de módulo server-only em client
+      # component — `tsc --noEmit` passa nesse caso. Ver PD-10.
+      - name: Build
+        run: npm run build
+        env:
+          # O build não conecta em nada, mas os módulos são avaliados e o client
+          # do Supabase exige as variáveis presentes. Valores fictícios bastam;
+          # os segredos reais ficam no servidor de deploy.
+          NEXT_PUBLIC_SUPABASE_URL: https://ci.example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-anon-key
+          SUPABASE_SERVICE_ROLE_KEY: ci-service-role-key
+          GEMINI_API_KEY: ci-gemini-key
+          NEXT_TELEMETRY_DISABLED: "1"

@@ -117,6 +117,7 @@ export default async function ChatAgentPage({
           model: agent.model,
           temperature: agent.temperature,
           max_history_messages: agent.max_history_messages,
+          modo_resposta: agent.modo_resposta,
         },
       ];
 

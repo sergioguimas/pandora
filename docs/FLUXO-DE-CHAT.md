@@ -81,19 +81,31 @@ Dois modos, decididos por quantos agentes a conversa tem:
   anteriores como contexto (`chainContext`). A chamada dinâmica fica **desligada**
   (`orchestrationLocked`). No fim, roda a **síntese**.
 
-> `planAgentExecution` (um "orquestrador" que escolheria quais agentes respondem via
-> LLM) **existe mas está desativado** (`void planAgentExecution`). A ordem é sempre a
-> de `listAgentsByConversation`. Rastreado em `docs/DIVIDA-TECNICA.md`.
+> A ordem de execução é sempre a de `listAgentsByConversation` (campo `ordem` em
+> `conversation_agents`). Não há um orquestrador que escolha agentes via LLM — o
+> protótipo `planAgentExecution`, que estava morto no código, foi removido em `PD-03`.
 
 ## 3. RAG (busca de conhecimento)
 
 `matchKnowledge` (`server/repositories/knowledge-repository.ts`):
 
-1. **Busca semântica** via RPC `match_agent_knowledge` (similaridade cosseno, pgvector).
-   Combina chunks `global` (do agente) + `conversation` (da conversa).
+1. **Busca semântica** via RPC `match_agent_knowledge` (similaridade cosseno, pgvector),
+   assinatura de **6 args** (`agent`, `conversation`, `knowledge_space`, `embedding`,
+   `threshold`, `count`). Combina três escopos:
+   - `global` → do agente
+   - `conversation` → da conversa
+   - `space` → do espaço de conhecimento do agente
 2. **Fallback textual**: se a busca semântica não retornar nada, extrai termos
    (≥4 chars) da pergunta e faz match por palavra-chave sobre os chunks `ready`,
-   pontuando por ocorrência. Robusto quando o embedding não "casa".
+   pontuando por ocorrência. Espelha os mesmos três escopos.
+
+> A RPC **não** é `SECURITY DEFINER` de propósito: roda sob a RLS do chamador, então o
+> escopo por organização das policies vale também para o RAG.
+>
+> Histórico: existiam **3 overloads** de `match_agent_knowledge` e o app chamava a de
+> 5 args, que não filtrava `space` — conhecimento de espaço era ingerido e **nunca
+> recuperado**. Unificado em `PD-15`; se você mudar a assinatura, **dropte a antiga**:
+> `create or replace` com assinatura diferente cria overload, não substitui.
 
 **Ingestão** (`ingest-agent-knowledge.ts`): cria o documento (`processing`) →
 `chunkText` (1200 chars, overlap 200) → embedding por chunk (`gemini-embedding-001`,
@@ -108,10 +120,11 @@ Dois modos, decididos por quantos agentes a conversa tem:
 como `retryable`:
 
 1. Autentica; carrega a mensagem falha (precisa ter `retryable: true`).
-2. **Verifica a conversa** — hoje via `conversations.user_id = auth.uid()`
-   (⚠️ **inconsistente com o modelo de participantes** — ver dívida técnica).
+2. **Verifica a conversa** — o acesso é validado pela **RLS**
+   (`is_conversation_participant`), então qualquer participante pode retentar, não só
+   o dono (corrigido em `PD-05`).
 3. Recupera a mensagem original do usuário e o agente (`agent_id`/`slug`).
-4. Refaz RAG + histórico filtrado + streaming (`maxOutputTokens: 1800`).
+4. Refaz RAG + histórico filtrado + streaming.
 5. Salva a nova resposta (`retry_of_message_id`) e marca a original como
    **`superseded`**.
 
@@ -156,11 +169,74 @@ Formato: `data: <json>\n\n`. Sentinela final: `data: [DONE]\n\n`.
 `MODEL_TEMPORARILY_UNAVAILABLE` / `MODEL_RATE_LIMITED` / `MODEL_TIMEOUT` /
 `MODEL_STREAM_INTERRUPTED` / `MODEL_UNKNOWN_ERROR` / `MESSAGE_SAVE_FAILED`.
 
-## 7. Pontos de atenção ao editar este fluxo
+## 7. Runtime compartilhado
 
-- **`classifyModelError`, `withRetry`, `withTimeout`, `saveMessage`,
-  `buildSystemInstruction` estão duplicados** entre `stream` e `retry`, já com valores
-  divergentes (`maxOutputTokens` 2000 vs 1800). Alterar num sem o outro cria
-  divergência silenciosa. Extração para `lib/ai-runtime` é a prioridade 2 do backlog.
-- O handler mistura HTTP + negócio + persistência; qualquer refactor deve preservar o
-  **contrato SSE** acima (o cliente depende dele).
+`stream` e `retry` consomem o mesmo módulo
+[`src/server/services/ai/runtime.ts`](../src/server/services/ai/runtime.ts) (extraído
+em `PD-02`). **Mudanças de comportamento de geração vão lá, não nos handlers** — é o
+que impede os dois caminhos de divergirem de novo.
+
+O runtime concentra:
+
+| Item | Conteúdo |
+|---|---|
+| Constantes | `MODEL_TIMEOUT_MS` (75s), `RETRY_DELAYS_MS`, `MODEL_MAX_RETRIES` |
+| Modo de resposta | `maxOutputTokensFor()` + presets (reexportados de `@/lib/response-mode`) |
+| Erros | taxonomia `ModelErrorCode`, `ModelErrorInfo`, `ModelGenerationError`, `classifyModelError`, `getErrorStatus` |
+| Resiliência | `withRetryBeforeStreaming`, `withTimeout`, `sleep` |
+| SSE / dados | `sse`, `sanitizeJson`, `saveMessage`, tipo `Message` |
+| Heurísticas | `normalizeText`, `removeActionJson`, `isProbablyIncompleteAnswer` |
+
+Fica **fora** do runtime (é específico de cada rota): montagem do
+`buildSystemInstruction`, filtro de histórico, orquestração da cadeia e síntese.
+
+## 8. Onde mexer (e onde não)
+
+Desde o `PD-07` a responsabilidade está separada:
+
+| Camada | Arquivo | O que vai aqui |
+|---|---|---|
+| Adaptador HTTP | `api/chat/stream/route.ts` (~76 linhas) | auth, persistir a msg do usuário, serializar eventos como SSE |
+| Orquestração | `services/ai/orchestrate-conversation.ts` | cadeia de agentes, RAG, síntese, montagem de prompt |
+| Runtime | `services/ai/runtime.ts` | erro/retry/timeout/persistência — **compartilhado com o retry** |
+
+O orquestrador é um **async generator** que emite `OrchestrationEvent`; o handler só
+traduz para SSE. Consequências práticas:
+
+- **Não** volte a colocar lógica de rodada no handler.
+- Mudança de comportamento de geração vai no `runtime.ts` (senão o `retry` diverge).
+- O contrato SSE da seção 5 é público — o cliente depende dele. O handler serializa o
+  evento **tal como o orquestrador emite**, então mudar o payload de um evento quebra a UI.
+- Teste a rodada com `deps` falsos em vez de subir request:
+  ```bash
+  npm test   # src/server/services/ai/orchestrate-conversation.test.ts
+  ```
+
+**Nuances que os testes fixaram** (mexeu, rode `npm test`):
+- Precedência do status: `failed` vence `partial`. Stream cortado com exceção →
+  `status: "failed"` + `partial: true` no evento. `status: "partial"` é só quando **não**
+  houve exceção e a heurística acusou truncamento.
+- Falha do RAG **não** derruba a rodada — o agente responde sem conhecimento.
+- Falha do provedor vira mensagem persistida e `retryable`, que é o que habilita o
+  botão "tentar novamente".
+## 9. Tamanho da resposta (`modo_resposta`)
+
+O teto de saída é um **preset por agente** (`agents.modo_resposta`), não uma constante
+global. Definido em [`src/lib/response-mode.ts`](../src/lib/response-mode.ts):
+
+| Modo | `maxOutputTokens` | Quando usar |
+|---|---|---|
+| `leve` | 800 | Respostas diretas; menor custo/latência |
+| `medio` | 2000 | **Padrão** — idêntico ao teto global anterior |
+| `alto` | 8000 | Tabelas e comparativos longos |
+
+- Editável na UI: **Agentes → Geral → Tamanho da resposta**.
+- Valor ausente/desconhecido cai em `medio` (`maxOutputTokensFor`).
+- A **síntese** segue o modo do primeiro agente da cadeia — mesma regra da escolha
+  de modelo.
+- `alto` = 8000 fica abaixo do limite do `gemini-2.0-flash` (8192), o modelo de
+  fallback da síntese. **Ao mexer nos valores, respeite o teto do modelo.**
+
+> O módulo vive em `lib/` e não no runtime porque o editor de agentes é client
+> component — e `runtime.ts` importa o client Supabase de servidor (`next/headers`),
+> o que quebraria o bundle.

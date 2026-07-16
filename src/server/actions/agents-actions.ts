@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getOrganizationIdForUser } from "@/server/repositories/organization-members-repository";
+import { DEFAULT_RESPONSE_MODE, isResponseMode } from "@/lib/response-mode";
 
 type UpdateAgentState = {
   ok: boolean;
@@ -63,6 +65,8 @@ export async function updateAgent(
 
   const category = String(formData.get("category") ?? "").trim();
 
+  const modoRespostaRaw = String(formData.get("modo_resposta") ?? "").trim();
+
   const tagsRaw = String(formData.get("tags") ?? "").trim();
 
   const tags = tagsRaw
@@ -95,6 +99,15 @@ export async function updateAgent(
     };
   }
 
+  // Valida no servidor: o <select> é só conveniência, e um valor inválido bateria
+  // na constraint do banco com erro genérico.
+  if (!isResponseMode(modoRespostaRaw)) {
+    return {
+      ok: false,
+      error: "Modo de resposta inválido.",
+    };
+  }
+
   const supabase = await createClient();
 
   const { error } = await supabase
@@ -104,6 +117,7 @@ export async function updateAgent(
       descricao: descricao || null,
       prompt_base: promptBase,
       ativo,
+      modo_resposta: modoRespostaRaw,
       knowledge_space_id: knowledgeSpaceIdRaw || null,
       category: category || null,
       tags,
@@ -128,12 +142,33 @@ export async function updateAgent(
 export async function createAgent(): Promise<void> {
   const supabase = await createClient();
 
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    throw new Error("Usuário não autenticado.");
+  }
+
+  const organizationId = await getOrganizationIdForUser(user.id);
+
+  // Space padrão da organização do usuário. Antes isto era o UUID fixo da
+  // "Base Geral", o que quebra com spaces por organização (PD-06).
+  const { data: defaultSpace } = await supabase
+    .from("knowledge_spaces")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .eq("is_default", true)
+    .maybeSingle();
+
   const baseName = "Novo Agente";
   const slug = await generateUniqueAgentSlug(baseName);
 
   const { error } = await supabase.from("agents").insert({
     nome: baseName,
     slug,
+    organization_id: organizationId,
     descricao: "Novo agente da Pandora.",
     prompt_base:
       "Você é um agente da plataforma Pandora. Responda em português do Brasil de forma clara, útil e profissional.",
@@ -142,9 +177,10 @@ export async function createAgent(): Promise<void> {
     model: "gemini-2.5-flash",
     temperature: 0.7,
     max_history_messages: 12,
+    modo_resposta: DEFAULT_RESPONSE_MODE,
     category: null,
     tags: [],
-    knowledge_space_id: "22222222-2222-2222-2222-222222222222",
+    knowledge_space_id: defaultSpace?.id ?? null,
   });
 
   if (error) {

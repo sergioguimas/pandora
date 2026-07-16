@@ -61,6 +61,7 @@ O código segue uma separação de camadas disciplinada. **Respeite-a ao evoluir
 ## 3. Estrutura de rotas (App Router)
 
 ```
+proxy.ts                  # renova a sessão do Supabase (Next 16; ex-"middleware")
 app/
 ├── (auth)/
 │   ├── login/            # entra na plataforma
@@ -79,8 +80,12 @@ app/
 ```
 
 O gate de autenticação é feito **por layout server-side** (`(dashboard)/layout.tsx`)
-e reforçado por RLS. **Não há `middleware.ts`** — veja a implicação em
-`docs/DIVIDA-TECNICA.md` (refresh de sessão).
+e reforçado por RLS.
+
+`src/proxy.ts` **não decide acesso** — apenas renova o token da sessão do Supabase a
+cada request (`PD-08`). Atenção: no **Next 16** a convenção `middleware.ts` foi
+renomeada para **`proxy.ts`** (função exportada `proxy`); usar o nome antigo faz o
+app responder `200` vazio silenciosamente.
 
 ## 4. Modelo de domínio (conceitual)
 
@@ -113,23 +118,36 @@ Detalhes de tabelas, colunas e RLS em `docs/BANCO-DE-DADOS.md`.
 ## 5. Camada de IA
 
 ```
-generate-agent-response.ts     ← dispatcher por provider (gemini | openai*)
-  └─ providers/gemini-provider.ts    (geração não-streaming — usado pelo caminho legado)
-  └─ providers/gemini-embeddings.ts  (query + document, gemini-embedding-001, 768d)
+orchestrate-conversation.ts    ← a rodada de conversa (cadeia + síntese)
+  └─ async generator: EMITE EVENTOS, não escreve em stream
+  └─ deps injetáveis (banco, embeddings, Gemini) → testável com fakes
+
+runtime.ts                     ← runtime compartilhado pelos caminhos de chat
+  ├─ classificação de erro do provedor (taxonomia MODEL_*)
+  ├─ retry com backoff + timeout
+  ├─ helpers de SSE / sanitização
+  ├─ detecção de resposta truncada
+  └─ persistência de mensagens (saveMessage)
+
+providers/gemini-embeddings.ts (query + document, gemini-embedding-001, 768d)
 
 ingest-agent-knowledge.ts      ← pipeline de ingestão de base de conhecimento
   ├─ chunk-text.ts             (chunk 1200 / overlap 200)
   └─ gemini-embeddings         (embedding por chunk)
-
-mock-agent-response.ts         ← respostas simuladas (dev/teste)
 ```
 
-O **streaming multi-agente real vive no Route Handler** `api/chat/stream/route.ts`,
-não nos services — ele chama o cliente Gemini diretamente. Essa é a principal
-inconsistência arquitetural do projeto (lógica de negócio pesada dentro do handler
-HTTP); veja `docs/FLUXO-DE-CHAT.md` e `docs/DIVIDA-TECNICA.md`.
+**A regra**: `api/chat/stream/route.ts` é só um **adaptador SSE** (~76 linhas) — ele
+autentica, persiste a mensagem do usuário e serializa os eventos do orquestrador.
+Lógica de rodada vai em `orchestrate-conversation.ts`; comportamento de geração
+(erro/retry/timeout) vai em `runtime.ts`. O `api/chat/retry/route.ts` consome o mesmo
+runtime — é isso que impede os dois caminhos de divergirem.
 
-`* openai`: presente na interface, lança "não implementado".
+Como o orquestrador emite eventos e recebe `deps`, dá para exercitar cadeia de agentes,
+síntese e falha do provedor **sem HTTP, sem banco e sem Gemini** — ver
+`orchestrate-conversation.test.ts` (`npm test`).
+
+> **Provider**: apenas **Gemini** está implementado. A coluna `agents.provider` aceita
+> `openai` por constraint, mas não há código para ele (`PD-12`).
 
 ## 6. Decisões e convenções
 

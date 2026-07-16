@@ -129,6 +129,7 @@ export async function getConversationWithAgent(
       model,
       temperature,
       max_history_messages,
+      modo_resposta,
       knowledge_space_id,
       category,
       tags

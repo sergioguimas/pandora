@@ -10,6 +10,7 @@ export type ConversationAgentItem = {
   model: string;
   temperature: number;
   max_history_messages: number;
+  modo_resposta: string;
   knowledge_space_id: string | null;
   category: string | null;
   tags: string[];
@@ -36,6 +37,7 @@ export async function listAgentsByConversation(
         model,
         temperature,
         max_history_messages,
+        modo_resposta,
         knowledge_space_id,
         category,
         tags
@@ -66,6 +68,7 @@ export async function listAgentsByConversation(
         model: agent.model,
         temperature: agent.temperature,
         max_history_messages: agent.max_history_messages,
+        modo_resposta: agent.modo_resposta,
         knowledge_space_id: agent.knowledge_space_id,
         category: agent.category,
         tags: agent.tags ?? [],

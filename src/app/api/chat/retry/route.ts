@@ -4,18 +4,20 @@ import { getGeminiClient } from "@/lib/gemini/client";
 import { getMessagesByConversationId } from "@/server/repositories/messages-repository";
 import { matchKnowledge } from "@/server/repositories/knowledge-repository";
 import { generateQueryEmbedding } from "@/server/services/ai/providers/gemini-embeddings";
+import {
+  classifyModelError,
+  maxOutputTokensFor,
+  MODEL_TIMEOUT_MS,
+  removeActionJson,
+  sanitizeJson,
+  saveMessage,
+  sse,
+  withRetryBeforeStreaming,
+  withTimeout,
+  type Message,
+} from "@/server/services/ai/runtime";
 
 export const runtime = "nodejs";
-
-type Message = {
-  id: string;
-  conversation_id: string;
-  user_id: string | null;
-  role: "user" | "assistant" | "system";
-  content: string | null;
-  metadata: Record<string, unknown> | null;
-  created_at: string;
-};
 
 type RuntimeAgent = {
   id: string;
@@ -27,6 +29,7 @@ type RuntimeAgent = {
   model: string;
   temperature: number;
   max_history_messages: number;
+  modo_resposta?: string | null;
   knowledge_space_id?: string | null;
   ordem?: number | null;
 };
@@ -44,165 +47,6 @@ type RetryMetadata = {
   } | null;
   orchestration?: Record<string, unknown>;
 };
-
-function sse(data: unknown) {
-  return `data: ${JSON.stringify(data)}\n\n`;
-}
-
-function withTimeout<T>(
-  promise: Promise<T>,
-  timeoutMs: number,
-  message = "Tempo limite excedido."
-): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) => {
-      setTimeout(() => reject(new Error(message)), timeoutMs);
-    }),
-  ]);
-}
-
-function normalizeText(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
-}
-
-function removeActionJson(text: string) {
-  return text
-    .replace(/\{[\s\S]*?"action"\s*:\s*"call_agent"[\s\S]*?\}/g, "")
-    .trim();
-}
-
-function getErrorStatus(error: unknown): number | undefined {
-  if (!error || typeof error !== "object") return undefined;
-
-  const maybeError = error as {
-    status?: unknown;
-    code?: unknown;
-    response?: { status?: unknown };
-    cause?: { status?: unknown };
-  };
-
-  const status =
-    maybeError.status ??
-    maybeError.response?.status ??
-    maybeError.cause?.status ??
-    maybeError.code;
-
-  if (typeof status === "number") return status;
-
-  if (typeof status === "string") {
-    const parsed = Number(status);
-    return Number.isFinite(parsed) ? parsed : undefined;
-  }
-
-  return undefined;
-}
-
-function classifyModelError(error: unknown) {
-  const status = getErrorStatus(error);
-  const message =
-    error instanceof Error ? error.message : "Erro ao gerar resposta.";
-
-  const lowerMessage = message.toLowerCase();
-
-  if (
-    status === 503 ||
-    lowerMessage.includes("503") ||
-    lowerMessage.includes("unavailable") ||
-    lowerMessage.includes("overloaded")
-  ) {
-    return {
-      code: "MODEL_TEMPORARILY_UNAVAILABLE",
-      status: 503,
-      retryable: true,
-      message:
-        "O provedor de IA está temporariamente indisponível. Tente novamente em instantes.",
-    };
-  }
-
-  if (
-    status === 429 ||
-    lowerMessage.includes("429") ||
-    lowerMessage.includes("rate limit")
-  ) {
-    return {
-      code: "MODEL_RATE_LIMITED",
-      status: 429,
-      retryable: true,
-      message:
-        "O provedor de IA limitou temporariamente as requisições. Tente novamente em instantes.",
-    };
-  }
-
-  if (status === 500 || status === 502 || status === 504) {
-    return {
-      code: "MODEL_TEMPORARILY_UNAVAILABLE",
-      status,
-      retryable: true,
-      message:
-        "O provedor de IA falhou temporariamente. Tente novamente em instantes.",
-    };
-  }
-
-  if (
-    lowerMessage.includes("timeout") ||
-    lowerMessage.includes("tempo limite") ||
-    (error instanceof Error && error.name === "AbortError")
-  ) {
-    return {
-      code: "MODEL_TIMEOUT",
-      status,
-      retryable: true,
-      message: "A resposta demorou mais que o esperado e foi interrompida.",
-    };
-  }
-
-  return {
-    code: "MODEL_UNKNOWN_ERROR",
-    status,
-    retryable: false,
-    message,
-  };
-}
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function withRetryBeforeStreaming<T>(
-  fn: () => Promise<T>,
-  options?: {
-    retries?: number;
-    delaysMs?: number[];
-  }
-): Promise<T> {
-  const retries = options?.retries ?? 2;
-  const delaysMs = options?.delaysMs ?? [800, 2000];
-
-  let lastError: unknown;
-
-  for (let attempt = 0; attempt <= retries; attempt += 1) {
-    try {
-      return await fn();
-    } catch (error) {
-      lastError = error;
-
-      const classified = classifyModelError(error);
-
-      if (!classified.retryable || attempt >= retries) {
-        throw error;
-      }
-
-      await sleep(delaysMs[attempt] ?? 2000);
-    }
-  }
-
-  throw lastError;
-}
 
 function buildSystemInstruction(agent: RuntimeAgent, knowledge: string): string {
   return [
@@ -223,55 +67,6 @@ function buildSystemInstruction(agent: RuntimeAgent, knowledge: string): string 
   ]
     .filter(Boolean)
     .join("\n");
-}
-
-function sanitizeJson<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value));
-}
-
-async function saveMessage(params: {
-  conversationId: string;
-  userId?: string | null;
-  role: "user" | "assistant" | "system";
-  content: string;
-  metadata?: Record<string, unknown> | null;
-}): Promise<Message> {
-  const supabase = await createClient();
-
-  const payload = {
-    conversation_id: params.conversationId,
-    user_id: params.userId ?? null,
-    role: params.role,
-    content: params.content,
-    metadata: params.metadata ? sanitizeJson(params.metadata) : null,
-  };
-
-  const { data, error } = await supabase
-    .from("messages")
-    .insert(payload)
-    .select("id, conversation_id, user_id, role, content, metadata, created_at")
-    .single();
-
-  if (error || !data) {
-    console.error("Erro ao salvar mensagem no retry:", {
-      error,
-      payload: {
-        ...payload,
-        content:
-          payload.content.length > 300
-            ? `${payload.content.slice(0, 300)}...`
-            : payload.content,
-      },
-    });
-
-    throw new Error(
-      error?.message
-        ? `Erro ao salvar mensagem: ${error.message}`
-        : "Erro ao salvar mensagem."
-    );
-  }
-
-  return data as Message;
 }
 
 async function markOriginalAsSuperseded(message: Message) {
@@ -351,16 +146,17 @@ export async function POST(request: NextRequest) {
 
   const conversationId = retryMessage.conversation_id;
 
+  // Acesso é validado pela RLS (is_conversation_participant): qualquer
+  // participante da conversa — não só o dono — pode retentar uma resposta.
   const { data: conversation, error: conversationError } = await supabase
     .from("conversations")
-    .select("id, user_id")
+    .select("id")
     .eq("id", conversationId)
-    .eq("user_id", user.id)
     .single();
 
   if (conversationError || !conversation) {
     return Response.json(
-      { error: "Conversa não encontrada para este usuário." },
+      { error: "Conversa não encontrada ou sem acesso." },
       { status: 404 }
     );
   }
@@ -402,7 +198,7 @@ export async function POST(request: NextRequest) {
   let agentQuery = supabase
     .from("agents")
     .select(
-      "id, slug, nome, descricao, prompt_base, provider, model, temperature, max_history_messages, knowledge_space_id, ativo"
+      "id, slug, nome, descricao, prompt_base, provider, model, temperature, max_history_messages, modo_resposta, knowledge_space_id, ativo"
     )
     .eq("ativo", true);
 
@@ -465,6 +261,7 @@ export async function POST(request: NextRequest) {
           agentId: runtimeAgent.id,
           conversationId,
           embedding: queryEmbedding,
+          knowledgeSpaceId: runtimeAgent.knowledge_space_id ?? null,
           query: userContent,
           threshold: 0.35,
           count: 4,
@@ -539,7 +336,7 @@ export async function POST(request: NextRequest) {
                     contents,
                     config: {
                       temperature: runtimeAgent.temperature,
-                      maxOutputTokens: 1800,
+                      maxOutputTokens: maxOutputTokensFor(runtimeAgent.modo_resposta),
                     },
                   }),
                 {
@@ -588,7 +385,7 @@ export async function POST(request: NextRequest) {
 
               return accumulated;
             })(),
-            75000,
+            MODEL_TIMEOUT_MS,
             `Tempo limite excedido para o agente ${runtimeAgent.nome}.`
           );
         } catch (error) {

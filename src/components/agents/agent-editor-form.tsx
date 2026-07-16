@@ -12,6 +12,12 @@ import {
 } from "lucide-react";
 import type { Agent } from "@/types/database";
 import { updateAgent } from "@/server/actions/agents-actions";
+import {
+  DEFAULT_RESPONSE_MODE,
+  RESPONSE_MODE_LABELS,
+  RESPONSE_MODE_MAX_TOKENS,
+  RESPONSE_MODES,
+} from "@/lib/response-mode";
 import { cn } from "@/lib/utils";
 
 type KnowledgeSpaceOption = {
@@ -214,6 +220,36 @@ export function AgentEditorForm({
             />
             <p className="text-xs leading-5 text-muted-foreground">
               Separe as tags por vírgula.
+            </p>
+          </div>
+
+          <div className="grid gap-2">
+            <label className="text-sm font-medium text-foreground">
+              Tamanho da resposta
+            </label>
+
+            <select
+              name="modo_resposta"
+              defaultValue={agent.modo_resposta ?? DEFAULT_RESPONSE_MODE}
+              className={cn("h-11", fieldClass())}
+            >
+              {RESPONSE_MODES.map((mode) => (
+                <option key={mode} value={mode}>
+                  {RESPONSE_MODE_LABELS[mode]}
+                </option>
+              ))}
+            </select>
+
+            <p className="text-xs leading-5 text-muted-foreground">
+              Limite de saída do modelo:{" "}
+              {RESPONSE_MODES.map(
+                (mode, index) =>
+                  `${mode} ${RESPONSE_MODE_MAX_TOKENS[mode].toLocaleString("pt-BR")}${
+                    index < RESPONSE_MODES.length - 1 ? " · " : ""
+                  }`
+              ).join("")}{" "}
+              tokens. Use <strong>alto</strong> em agentes que respondem com
+              tabelas longas — no <strong>médio</strong> elas podem ser cortadas.
             </p>
           </div>
         </div>

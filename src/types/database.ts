@@ -10,6 +10,8 @@ export type Agent = {
   model: string;
   temperature: number;
   max_history_messages: number;
+  /** Preset de tamanho da saída — ver RESPONSE_MODE_MAX_TOKENS no runtime. */
+  modo_resposta: "leve" | "medio" | "alto";
   knowledge_space_id: string | null;
   category: string | null;
   tags: string[];
@@ -55,6 +57,7 @@ export type ConversationWithAgent = Conversation & {
         model: string;
         temperature: number;
         max_history_messages: number;
+        modo_resposta: "leve" | "medio" | "alto";
         knowledge_space_id: string | null;
         category: string | null;
         tags: string[];
@@ -69,6 +72,7 @@ export type ConversationWithAgent = Conversation & {
         model: string;
         temperature: number;
         max_history_messages: number;
+        modo_resposta: "leve" | "medio" | "alto";
       }[]
     | null;
 };

@@ -113,6 +113,15 @@ npm run dev
 | `npm run build` | Build de produção (`standalone`) |
 | `npm run start` | Sobe o build de produção |
 | `npm run lint` | ESLint |
+| `npm test` | Testes (vitest) — não precisa de banco nem de API key |
+| `npm run test:watch` | Testes em watch |
+
+O CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) roda lint → testes →
+type-check → build em push na `main` e em PR.
+
+> Rode `npm run build` antes de abrir PR quando mexer em módulo compartilhado: é o
+> único passo que detecta import de código server-only em client component — o
+> `tsc --noEmit` passa nesse caso.
 
 ---
 
@@ -136,9 +145,15 @@ src/
 │   └── services/ai/             # provider Gemini, embeddings, RAG, ingestão
 └── types/                       # tipos de domínio (database, ai)
 
-supabase/migrations/             # histórico versionado do schema + RLS
+supabase/
+├── migrations/                  # histórico versionado do schema + RLS
+└── schema/                      # 📌 snapshot do banco real (referência — ver PD-18)
 docs/                            # 📚 documentação técnica (comece por ARQUITETURA.md)
 ```
+
+> ⚠️ Nunca coloque dumps em `supabase/migrations/` — a CLI tenta aplicá-los como
+> migration. Dumps de **dados** (`*_data_*.sql`) são gitignored: trazem `auth.users`
+> (e-mail, hash de senha) e o conteúdo das conversas.
 
 ---
 
