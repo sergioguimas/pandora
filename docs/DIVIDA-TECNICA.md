@@ -19,11 +19,11 @@ tem id, severidade, arquivos e ação recomendada. Use os ids (`PD-xx`) em commi
 6. ~~`PD-17` + `PD-15` + `PD-06`/`PD-06b` + `PD-16` — multi-tenant + RLS + RPC~~ ✅ *(aplicado e verificado contra o banco em 2026-07-15)*
 7. ~~`PD-09` fechar o Storage~~ ✅ *(aplicado e verificado em 2026-07-15)*
 8. ~~`PD-07` extrair a orquestração do handler~~ ✅ *(com 10 testes cobrindo a rodada)*
-9. ~~`PD-10` + `PD-19` — modo de resposta por agente e o piso de 40 chars~~ ✅ *(aguardando `db push`)*
+9. ~~`PD-10` + `PD-19` — modo de resposta por agente e o piso de 40 chars~~ ✅
 10. ~~`PD-04` cobrir o núcleo com testes + CI~~ ✅ *(81 testes; GitHub Actions)*
-11. `PD-18` baseline para reconciliar o drift ← **próximo** (destrava o `PD-04b`)
-12. `PD-04b` RLS via `supabase test db` · `PD-13` timestamp da migration #5
-13. `PD-11` `taskType` nos embeddings · `PD-12` provider OpenAI
+11. ~~`PD-18` baseline — migrations voltam a reproduzir produção~~ ✅ *(verificado do zero)*
+12. `PD-04b` testes de RLS ← **próximo** (destravado pelo `PD-18`)
+13. `PD-11` `taskType` nos embeddings · `PD-12` provider OpenAI · `PD-13` ✅ *(resolvido pelo baseline)*
 
 ---
 
@@ -31,30 +31,17 @@ tem id, severidade, arquivos e ação recomendada. Use os ids (`PD-xx`) em commi
 
 ## 🟠 Média
 
-### PD-18 — Banco tinha drift em relação às migrations
-- **O que aconteceu**: objetos existiam no banco sem nenhuma migration que os criasse
-  (um overload de 4 args de `match_agent_knowledge`, a função `match_knowledge_chunks`,
-  `handle_new_user_default_organization()` e as policies `_anon_temp` / `USING (true)`).
-  **Ler só as migrations levou a conclusões erradas** — o diagnóstico só fechou com o
-  dump real.
-- **Mitigado**: os objetos órfãos foram removidos e o snapshot de schema em
-  `supabase/schema/` virou a referência. Toda alteração agora passa por migration.
-- **Ainda em aberto**: uma migration de **baseline** que reconcilie o estado real, para
-  que um `supabase db reset` local reproduza produção. Hoje as migrations 1–16 não
-  reconstroem o banco fielmente.
-- **Aceite**: `db reset` local gera um schema equivalente ao dump.
-
 ### PD-04b — RLS ainda sem teste automatizado
-- **Estado**: o núcleo em TypeScript está coberto (81 testes) e roda no CI — ver
-  `PD-04` em Concluídos. **Falta a camada de RLS.**
-- **Problema**: as policies são a fronteira de segurança do produto, e a única
-  verificação até hoje foi manual (queries no dump). Um `supabase test db` (pgTAP)
-  provaria isolamento entre orgs, acesso de participante e a visibilidade dos agentes
-  universais — de forma repetível.
-- **Bloqueado por `PD-18`**: `supabase test db` roda contra um banco local criado pelas
-  migrations, e elas **não reproduzem produção** (drift). O teste passaria/falharia
-  contra um schema que não é o real — pior que não ter teste. Fazer o baseline primeiro.
-- **Aceite**: `supabase test db` cobrindo isolamento por org e participante, rodando no CI.
+- **Estado**: o núcleo em TypeScript está coberto (81 testes) e roda no CI. **Falta a
+  camada de RLS** — as policies são a fronteira de segurança e a única verificação até
+  hoje foi manual.
+- **Destravado pelo `PD-18`**: as migrations agora reproduzem produção, então um banco
+  local finalmente é confiável para testar policies.
+- **Bloqueado por ambiente**: `supabase test db` precisa do `supabase start`, que falha
+  neste ambiente (ver a nota de incompatibilidade no `PD-18` concluído). Alternativa
+  enquanto isso: pgTAP sobre a mesma abordagem usada para verificar o baseline
+  (container `supabase/postgres` + `psql`), sem depender do CLI.
+- **Aceite**: teste cobrindo isolamento por org e por participante, rodando no CI.
 
 ---
 
@@ -73,10 +60,6 @@ tem id, severidade, arquivos e ação recomendada. Use os ids (`PD-xx`) em commi
   (o dispatcher foi removido no `PD-03`).
 - **Ação**: implementar de fato **ou** restringir a constraint a `'gemini'` até existir,
   para não sugerir uma capacidade inexistente.
-
-### PD-13 — Migration com timestamp placeholder
-- **Onde**: `supabase/migrations/20260418xxxxxx_add_knowledge_base.sql`.
-- **Ação**: renomear com timestamp real para não arriscar a ordenação do `db push`.
 
 ### PD-14 — README ↔ código (manter sincronizado)
 - **Ação**: `PD-01` corrigiu o descompasso principal. Manter a regra: **toda mudança
@@ -303,6 +286,64 @@ avaliados e o `admin.ts` constrói o client no import. **Validado**: build roda 
 Nenhum dos dois é bug fatal — o caminho semântico continua funcionando —, mas estão
 travados por teste para não mudarem sem querer.
 
+### PD-18 — Baseline: as migrations voltam a reproduzir produção 🟠
+As migrations **não replayavam**. Comprovado, não suposto: aplicadas numa a uma num
+Postgres limpo, 17 passaram e a 18ª abortou —
+
+```
+ERROR: PD-06b: esperados 2 agentes universais (Agente 0, Oráculo), encontrados 0.
+Agentes no banco: Analista Documental, Assistente Geral, Consultor Comercial.
+```
+
+Três problemas de fundo:
+1. **Migration dependente de dados**: a `130000` procurava `Agente 0`/`Oráculo` para
+   movê-los à org do sistema. Existem em produção, não num banco novo.
+2. **Seed obsoleto**: a migration #2 semeava 3 agentes que foram renomeados/removidos
+   pela UI e não existem mais em produção.
+3. **Drift**: objetos vivos que nenhuma migration criava.
+
+**Solução**: as 20 migrations foram arquivadas em
+[`supabase/schema/archive/`](../supabase/schema/archive/) (via `git mv`, histórico
+preservado) e substituídas por um **baseline** gerado do dump real:
+[`20260716000000_baseline_schema.sql`](../supabase/migrations/20260716000000_baseline_schema.sql).
+
+Regras do baseline: **só schema, sem seed de dado, sem passo dependente de dados** —
+migração de dado é evento único e pertence ao histórico, não a um arquivo replayável.
+
+**Verificação** (banco limpo → aplica só `migrations/` → compara com o dump de prod):
+
+| | prod | local |
+|---|---|---|
+| Funções | 12 | 12 ✓ |
+| Policies | 43 | 43 ✓ |
+| Triggers (public+auth) | 6 | 6 ✓ |
+| Tabelas | 13 | 13 ✓ |
+| Colunas | 101 | 101 ✓ |
+| Índices | 52 | 52 ✓ |
+
+> **Em produção o baseline não deve rodar** — o schema já está lá. Registre como
+> aplicado: `npx supabase migration repair --status applied 20260716000000`.
+
+**Ressalvas honestas:**
+- Verifiquei o schema **`public` + triggers de `auth`**. O `storage` **não**: suas
+  tabelas são criadas pelo storage-api e precisei stubá-las. As policies de storage são
+  fail-closed (`PD-09`), então não há policy a conferir — mas os buckets não foram
+  verificados contra prod.
+- A verificação **não** usou `supabase db reset`: o `supabase start` falha neste
+  ambiente (Docker Engine 29.1.2 → HTTP 500 em `/images/{name}/json` para todas as
+  imagens; `pull` funciona, `inspect` não; forçar a API v1.51→v1.52 não muda). Usei
+  container `supabase/postgres` + `psql`, que exercita o mesmo SQL.
+- O CLI também não alcança o projeto remoto: **403** — a conta autenticada só enxerga
+  outro projeto. Por isso o baseline foi gerado do dump, e não por `supabase db pull`.
+
+> **Lição**: migration que lê dados de produção não é replayável. O guard que abortava
+> alto (em vez de marcar errado em silêncio) foi justamente o que expôs isso.
+
+### PD-13 — Migration com timestamp placeholder 🟡
+`20260418xxxxxx_add_knowledge_base.sql` tinha timestamp placeholder e arriscava a
+ordenação do `db push`. Resolvido junto do `PD-18`: o arquivo foi para o archive e não
+está mais no caminho da CLI.
+
 ### PD-16 — Policies duplicadas em `conversation_agents` 🟠
 A última migration recriara regras owner-only via `conversations.user_id` sem remover as
 por participante. Removidas as quatro duplicadas; restaram só as de participante/dono.
@@ -329,3 +370,4 @@ por participante. Removidas as quatro duplicadas; restaram só as de participant
 | 2026-07-15 | PD-19 | Novo: `isProbablyIncompleteAnswer` marca como truncada qualquer resposta < 40 chars. Descoberto ao escrever os testes do PD-07. |
 | 2026-07-15 | PD-10 + PD-19 | Migration `20260715160000` aplicada. `modo_resposta` (leve/medio/alto) por agente, presets em `lib/response-mode.ts`, piso de 40 chars corrigido. |
 | 2026-07-15 | PD-04 | Suíte em **81 testes** (RAG fallback, chunkText, runtime, helpers de orquestração) + CI no GitHub Actions (lint/test/typecheck/build). Build validado sem `.env.local`. |
+| 2026-07-16 | PD-18 + PD-13 | Migrations 1–20 arquivadas; baseline `20260716000000` gerado do dump real. **Verificado**: banco limpo + só `migrations/` reproduz prod (12 funções, 43 policies, 6 triggers, 13 tabelas, 101 colunas, 52 índices). Falta rodar `migration repair` no remoto. |

@@ -4,9 +4,11 @@ Postgres gerenciado pelo **Supabase**, com extensões `pgcrypto` e `vector` (pgv
 **A fronteira de segurança é o RLS** — quase todo acesso passa pelo client com sessão
 do usuário.
 
-> ⚠️ **Fonte da verdade**: use o snapshot em
-> [`supabase/schema/`](../supabase/schema/) (schema-only, versionado). As migrations
-> sofreram drift — houve objetos em produção que nenhuma migration criava (`PD-18`).
+> ✅ **Fonte da verdade**: `supabase/migrations/` — desde o `PD-18` há um **baseline**
+> único, gerado do banco real e **verificado** (banco limpo + baseline reproduz
+> produção: 12 funções, 43 policies, 13 tabelas, 101 colunas, 52 índices).
+> O histórico anterior (20 migrations) está em
+> [`supabase/schema/archive/`](../supabase/schema/archive/) — leitura, não execução.
 > Dumps de **dados** ficam fora do Git (contêm `auth.users` e as conversas).
 
 ## 1. Tabelas
@@ -155,10 +157,16 @@ organização. Em vez de flag no agente, eles pertencem a uma **organização do
 > where schemaname='public' and qual = 'true';
 > ```
 
-## 4. Timeline das migrations
+## 4. Timeline das migrations (histórico arquivado)
 
-A ordem revela a evolução do produto em três "eras". Entender isso ajuda a explicar
-inconsistências no código (ver dívida técnica).
+> 📌 **Estas 20 migrations não estão mais em `supabase/migrations/`.** Foram
+> substituídas pelo baseline no `PD-18` e vivem em
+> [`supabase/schema/archive/`](../supabase/schema/archive/) — servem para **entender a
+> evolução**, não para executar. Elas não reproduziam o banco: a #18 dependia de dados
+> de produção e a #2 semeava agentes que não existem mais.
+
+A ordem revela a evolução do produto em quatro "eras". Entender isso ajuda a explicar
+inconsistências que ainda aparecem no código.
 
 | # | Migration | O que introduziu |
 |---|---|---|
@@ -182,6 +190,19 @@ inconsistências no código (ver dívida técnica).
 | 18 | `20260715130000_multitenant_agents_knowledge_and_rls` | Org do sistema + agentes universais; `organization_id` nas 4 tabelas; RLS fechada; `slug` único por org; `match_agent_knowledge` canônica; limpeza do `conversation_agents` |
 | 19 | `20260715150000_lock_down_storage_and_attachments` | Storage fail-closed; teto de 25 MB; `agent_knowledge_files` por org; `message_attachments` por participante |
 | 20 | `20260715160000_add_agent_response_mode` | `agents.modo_resposta` (`leve`/`medio`/`alto`, default `medio`) — tamanho da saída configurável por agente |
+
+### O estado atual: baseline
+
+| Migration | Conteúdo |
+|---|---|
+| `20260716000000_baseline_schema` | **Todo o schema**, gerado do banco real e verificado. Só DDL: sem seed de dado, sem passo dependente de dados. |
+
+**Regras a partir daqui:**
+- Alterações novas entram como migration incremental **sobre** o baseline.
+- **Nunca** coloque seed de dado de negócio ou passo que leia dados de produção numa
+  migration — não replaya num banco novo. Foi exatamente o que quebrou o histórico.
+- Em produção o baseline não roda (o schema já existe): registre-o com
+  `npx supabase migration repair --status applied 20260716000000`.
 
 > A migration #5 tem nome com placeholder (`xxxxxx`) no timestamp — padronizar num
 > próximo housekeeping para não quebrar a ordenação do `supabase db push` (`PD-13`).
