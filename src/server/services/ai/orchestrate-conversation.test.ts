@@ -319,6 +319,63 @@ describe("orchestrateConversation — modo de resposta (PD-10)", () => {
   });
 });
 
+describe("orchestrateConversation — chave do tenant (PD-26)", () => {
+  /** Captura o `apiKey` de cada chamada ao modelo. */
+  function spyApiKey() {
+    const keys: Array<string | undefined> = [];
+    return {
+      keys,
+      streamModel: async (params: { apiKey?: string }) => {
+        keys.push(params.apiKey);
+        return tokenStream(RESPOSTA_OK);
+      },
+    };
+  }
+
+  it("injeta a chave do tenant no streamModel quando existe para o provider", async () => {
+    const spy = spyApiKey();
+
+    await collect(
+      makeDeps({
+        listAgents: async () => [makeAgent({ provider: "gemini" })],
+        getTenantApiKeys: async () => ({ gemini: "chave-do-tenant" }),
+        streamModel: spy.streamModel,
+      })
+    );
+
+    expect(spy.keys).toEqual(["chave-do-tenant"]);
+  });
+
+  it("sem chave do tenant, apiKey fica indefinido (cai na plataforma)", async () => {
+    const spy = spyApiKey();
+
+    await collect(
+      makeDeps({
+        listAgents: async () => [makeAgent({ provider: "gemini" })],
+        // getTenantApiKeys ausente — é o padrão de produção antes do BYOK.
+        streamModel: spy.streamModel,
+      })
+    );
+
+    expect(spy.keys).toEqual([undefined]);
+  });
+
+  it("resolve por provider: chave de openai não vale para um agente gemini", async () => {
+    const spy = spyApiKey();
+
+    await collect(
+      makeDeps({
+        listAgents: async () => [makeAgent({ provider: "gemini" })],
+        getTenantApiKeys: async () => ({ openai: "chave-openai" }),
+        streamModel: spy.streamModel,
+      })
+    );
+
+    // O agente é gemini; a chave do tenant é de openai → nada casa, plataforma.
+    expect(spy.keys).toEqual([undefined]);
+  });
+});
+
 describe("orchestrateConversation — provider do agente (PD-12)", () => {
   it("repassa o provider configurado no agente", async () => {
     const providers: string[] = [];

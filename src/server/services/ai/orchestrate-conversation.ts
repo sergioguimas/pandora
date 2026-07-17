@@ -8,6 +8,12 @@ import {
 import { getMessagesByConversationId } from "@/server/repositories/messages-repository";
 import { matchKnowledge } from "@/server/repositories/knowledge-repository";
 import { listAgentsByConversation } from "@/server/repositories/conversation-agents-repository";
+// Só o TIPO é importado estaticamente. O módulo tem `import "server-only"`, que
+// lança no ambiente de teste (vitest, node) — e este arquivo É importado pelos
+// testes do orquestrador. Um `import type` é apagado na compilação, então não
+// carrega o módulo; a função real entra por import DINÂMICO no defaultDeps, que
+// os testes nunca exercitam (eles injetam deps falsos).
+import type { TenantApiKeys } from "@/server/repositories/provider-keys-repository";
 import { generateQueryEmbedding } from "@/server/services/ai/providers/gemini-embeddings";
 import {
   classifyModelError,
@@ -114,6 +120,10 @@ export type OrchestratorDeps = {
   }) => Promise<Array<{ content: string }>>;
   saveMessage: typeof saveMessage;
   streamModel: (params: ModelStreamParams) => Promise<ModelStream>;
+  // Chaves do tenant (PD-26), resolvidas uma vez por request e injetadas no
+  // streamModel. Opcional: sem ela, tudo roda na chave da plataforma — que é o
+  // comportamento dos testes e o padrão antes do BYOK.
+  getTenantApiKeys?: (conversationId: string) => Promise<TenantApiKeys>;
 };
 
 // --- Agente principal da conversa (fallback quando não há conversation_agents) ---
@@ -164,6 +174,10 @@ export const defaultDeps: OrchestratorDeps = {
   matchKnowledge,
   saveMessage,
   streamModel,
+  getTenantApiKeys: (conversationId) =>
+    import("@/server/repositories/provider-keys-repository").then((m) =>
+      m.getTenantApiKeysForConversation(conversationId)
+    ),
 };
 
 // --- Filtro de histórico ------------------------------------------------------
@@ -494,6 +508,23 @@ export async function* orchestrateConversation(
   try {
     yield { type: "saved_user", message: savedUserMessage };
 
+    // Resolve as chaves do tenant UMA vez e embrulha o streamModel para injetar
+    // a chave certa por provider. Assim toda geração daqui pra frente (agentes e
+    // síntese) usa a chave do tenant quando existe, e a da plataforma quando não
+    // — sem propagar `apiKey` por cada assinatura. Uma chave já setada no params
+    // (não acontece hoje) tem precedência, por segurança.
+    const tenantApiKeys = deps.getTenantApiKeys
+      ? await deps.getTenantApiKeys(conversationId)
+      : {};
+    const gen: OrchestratorDeps = {
+      ...deps,
+      streamModel: (params) =>
+        deps.streamModel({
+          ...params,
+          apiKey: params.apiKey ?? tenantApiKeys[params.provider as keyof TenantApiKeys],
+        }),
+    };
+
     const history = await deps.getHistory(conversationId);
     const conversationAgents = await deps.listAgents(conversationId);
 
@@ -616,7 +647,7 @@ export async function* orchestrateConversation(
 
       try {
         fullResponse = yield* streamAnswer({
-          deps,
+          deps: gen,
           provider: agent.provider,
           model: agent.model,
           temperature: agent.temperature,
@@ -822,7 +853,7 @@ export async function* orchestrateConversation(
 
     if (previousAgentResponses.length > 1) {
       yield* runSynthesis({
-        deps,
+        deps: gen,
         conversationId,
         content,
         savedUserMessage,

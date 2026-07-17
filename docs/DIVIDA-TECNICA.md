@@ -109,12 +109,27 @@ fechar o `/cadastro`, UI de membros e painel de admin.
 
 ### PD-26 — Chave de API por tenant 🔴
 
-> **Estado (2026-07-17)**: **servidor + UI de chaves prontos.** Falta só ligar a leitura
-> no `stream`/`retry` (usar a chave do tenant quando existir). Feito: `provider-key-cipher`
-> (AES-256-GCM, 8 testes puros), `provider-keys-repository`, `provider-keys-actions`
-> (autoriza `owner`/`admin` da própria org) e a página `/configuracoes/chaves` com o aviso
-> de sensibilidade e o valor censurado (`••••4f2c`). O build confirma que o `import type`
-> do módulo `server-only` no client component não vaza para o bundle (classe do PD-10).
+> **Estado (2026-07-17)**: **completo, ponta a ponta.** A chave do tenant já é usada na
+> geração (`stream` e `retry`). Feito: `provider-key-cipher` (AES-256-GCM, 8 testes puros),
+> `provider-keys-repository` (grava cifrado + lê/decifra para o motor), `provider-keys-actions`
+> (autoriza `owner`/`admin`), página `/configuracoes/chaves` com aviso de sensibilidade e
+> valor censurado (`••••4f2c`), e a injeção da chave no `streamModel`.
+>
+> **Como a chave chega ao modelo**: resolvida UMA vez por request, pela organização **da
+> conversa** (o tenant que usa é quem paga — um agente universal numa conversa do tenant
+> roda com a chave do tenant). O orquestrador embrulha `deps.streamModel` para injetar a
+> chave por `provider`; o retry resolve e passa direto. `getGeminiClient(apiKey?)` usa a do
+> tenant quando vem, a da plataforma quando não. Presença = BYOK, ausência = plataforma —
+> por provider (chave de openai não vale para agente gemini). 3 testes cobrem a fiação.
+>
+> **Decisão de robustez**: chave que não decifra (ex.: `PROVIDER_KEY_SECRET` rotacionado) é
+> **ignorada com log**, caindo na chave da plataforma — o chat não quebra; perde-se o BYOK
+> daquela chave até ser regravada.
+>
+> **Detalhe de import**: `orchestrate-conversation.ts` é importado pelos testes (vitest,
+> node), e `provider-keys-repository` tem `import "server-only"` (lança fora do Next). Por
+> isso o orquestrador importa só o **tipo** estaticamente e a função real por **import
+> dinâmico** no `defaultDeps` — que os testes nunca exercitam.
 >
 > ⚙️ **Nova env obrigatória**: `PROVIDER_KEY_SECRET` (string longa e aleatória). O módulo
 > de cifra **falha alto** sem ela — de propósito, um default seria o mesmo que texto puro.
@@ -781,3 +796,5 @@ por participante. Removidas as quatro duplicadas; restaram só as de participant
 | 2026-07-17 | ferramental | `verify-baseline.mjs` e o harness de RLS passam a aplicar **`migrations/` inteira**, em ordem, e não só o baseline — a partir do `PD-23` existe migration depois dele, e o contrato é "`migrations/` reproduz produção". O diff de divergência virou diferença de conjunto (o posicional virava ruído a cada linha inserida). |
 | 2026-07-17 | PD-25/26 | Camada de servidor: RPC `create_organization` (`020000`), repos de org/chaves, cifra AES-GCM (8 testes), `/cadastro` fechado, UI de chaves. **66 testes de RLS** (5 do RPC, mordida provada por 2 mutações: policy de leitura "razoável" e o trigger da org padrão ressuscitado). Nova env `PROVIDER_KEY_SECRET`. Falta UI de admin/membros e ligar a chave do tenant no `stream`/`retry`. |
 | 2026-07-17 | prod (atenção) | `20260717010000` aplicada em produção fora de ordem, via SQL Editor, antes do código. Sem estrago (o funil no código cobria), mas o `supabase_migrations` não registrou nada. Diagnóstico pendente: confirmar estado de prod e aplicar `000000`/`020000`. |
+| 2026-07-17 | prod (diagnóstico) | Confirmado: prod tem baseline + `000000` (PD-23) + `010000` (PD-25/26 schema); só falta `020000` (RPC, novo). `schema_migrations` só registra o baseline. Prod == `migrations/` menos o RPC. |
+| 2026-07-17 | PD-26 | **Ponta a ponta.** Chave do tenant injetada no `streamModel` (orquestrador embrulha `deps.streamModel`; retry passa direto), resolvida pela org da conversa, por provider. `getGeminiClient(apiKey?)`. 3 testes de fiação (100 no total). Chave que não decifra cai na plataforma com log. Removido `const ai` morto do retry (warning de lint do PD-12). |

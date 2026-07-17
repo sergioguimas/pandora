@@ -1,6 +1,7 @@
 import "server-only";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import {
+  decryptProviderKey,
   encryptProviderKey,
   lastFour,
 } from "@/server/services/crypto/provider-key-cipher";
@@ -65,6 +66,59 @@ export async function upsertProviderKey(
     );
 
   if (error) throw new Error("Erro ao salvar a chave.");
+}
+
+// ---------------------------------------------------------------------------
+// Leitura para o MOTOR (PD-26). Este é o único ponto que decifra: a chave em
+// claro só existe em memória, no instante da chamada ao provedor.
+// ---------------------------------------------------------------------------
+
+export type TenantApiKeys = Partial<Record<Provider, string>>;
+
+/** As chaves decifradas de uma org, por provider. Uma chave que não decifra
+ *  (segredo trocado, dado corrompido) é IGNORADA — a org cai na chave da
+ *  plataforma em vez de o chat inteiro quebrar. */
+export async function getDecryptedProviderKeys(
+  organizationId: string
+): Promise<TenantApiKeys> {
+  const { data, error } = await supabaseAdmin
+    .from("organization_provider_keys")
+    .select("provider, chave_cifrada")
+    .eq("organization_id", organizationId);
+
+  if (error) throw new Error("Erro ao carregar chaves da organização.");
+
+  const out: TenantApiKeys = {};
+  for (const row of data ?? []) {
+    try {
+      out[row.provider as Provider] = decryptProviderKey(row.chave_cifrada as string);
+    } catch {
+      // Não derruba a geração — só perde o BYOK desta chave até ser regravada.
+      console.error(
+        `Falha ao decifrar a chave ${row.provider} da org ${organizationId}. ` +
+          `Verifique PROVIDER_KEY_SECRET. Caindo na chave da plataforma.`
+      );
+    }
+  }
+  return out;
+}
+
+/** Resolve as chaves do tenant a partir da CONVERSA — a org da conversa é quem
+ *  usa o produto (o tenant), então é a fatura dela. Um agente universal (org do
+ *  sistema, sem chave) numa conversa do tenant roda com a chave DO TENANT. */
+export async function getTenantApiKeysForConversation(
+  conversationId: string
+): Promise<TenantApiKeys> {
+  const { data, error } = await supabaseAdmin
+    .from("conversations")
+    .select("organization_id")
+    .eq("id", conversationId)
+    .maybeSingle();
+
+  if (error) throw new Error("Erro ao resolver a organização da conversa.");
+  if (!data?.organization_id) return {};
+
+  return getDecryptedProviderKeys(data.organization_id as string);
 }
 
 export async function deleteProviderKey(

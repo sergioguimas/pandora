@@ -34,6 +34,9 @@ export type ModelStreamParams = {
   contents: ModelContents;
   temperature: number;
   maxOutputTokens: number;
+  // Chave do tenant (PD-26). Ausente = usa a chave da plataforma. Resolvida uma
+  // vez por request, a partir da organização da conversa.
+  apiKey?: string;
 };
 
 export type ModelStream = AsyncIterable<{ text?: string }>;
@@ -46,7 +49,7 @@ export function isImplementedProvider(value: unknown): value is AgentProvider {
 }
 
 async function streamWithGemini(params: ModelStreamParams): Promise<ModelStream> {
-  const ai = getGeminiClient();
+  const ai = getGeminiClient(params.apiKey);
 
   return ai.models.generateContentStream({
     model: params.model,

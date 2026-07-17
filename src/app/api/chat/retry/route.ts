@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getGeminiClient } from "@/lib/gemini/client";
 import { getMessagesByConversationId } from "@/server/repositories/messages-repository";
 import { matchKnowledge } from "@/server/repositories/knowledge-repository";
+import { getTenantApiKeysForConversation } from "@/server/repositories/provider-keys-repository";
 import { generateQueryEmbedding } from "@/server/services/ai/providers/gemini-embeddings";
 import { streamModel } from "@/server/services/ai/providers/stream";
 import {
@@ -234,8 +234,11 @@ export async function POST(request: NextRequest) {
   };
   const userContent = originalUserMessage.content;
 
+  // Chave do tenant (PD-26): a org da conversa paga a própria geração. Ausente
+  // para o provider do agente = cai na chave da plataforma.
+  const tenantApiKeys = await getTenantApiKeysForConversation(conversationId);
+
   const encoder = new TextEncoder();
-  const ai = getGeminiClient();
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -338,6 +341,10 @@ export async function POST(request: NextRequest) {
                     contents,
                     temperature: runtimeAgent.temperature,
                     maxOutputTokens: maxOutputTokensFor(runtimeAgent.modo_resposta),
+                    apiKey:
+                      tenantApiKeys[
+                        runtimeAgent.provider as keyof typeof tenantApiKeys
+                      ],
                   }),
                 {
                   retries: 2,
