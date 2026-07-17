@@ -11,11 +11,12 @@ import type { Client } from "pg";
 
 export const IDS = {
   // Org do sistema: dona dos agentes universais (Agente 0, Oráculo). PD-06b.
+  // Confirmado em produção (2026-07-17): `Pandora System`, is_system = true.
   orgSystem: "00000000-0000-0000-0000-000000000000",
-  // Org padrão, hard-coded em `handle_new_user_default_organization`: TODO usuário
-  // novo é inserido nela por trigger. Precisa existir antes de qualquer
-  // auth.users, senão o insert viola a FK. Mantida vazia nos testes de propósito
-  // — todo mundo é membro dela, então nada isolado pode morar aqui.
+  // Ex-"Base Geral". Até o PD-25 ela era o destino de TODO usuário novo, por
+  // trigger — o que fazia de qualquer cadastro um colega de organização do dono
+  // do produto. O trigger morreu na migration `20260717010000`; ela continua
+  // aqui só como org comum, para provar que ninguém mais cai nela sozinho.
   orgDefault: "11111111-1111-1111-1111-111111111111",
 
   orgA: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -54,9 +55,10 @@ export async function seedFixtures(client: Client): Promise<void> {
     [IDS.orgSystem, IDS.orgDefault, IDS.orgA, IDS.orgB]
   );
 
-  // 2. Usuários. Inserir em auth.users dispara os dois triggers do baseline:
-  //    cria o profile e adiciona à org padrão. Deixamos acontecer — é o
-  //    comportamento real de produção, e testar contra outra coisa seria fingir.
+  // 2. Usuários. Inserir em auth.users dispara `handle_new_user`, que cria o
+  //    `profiles`. E SÓ isso, desde o PD-25: o trigger que adicionava todo mundo
+  //    à org padrão foi removido. Um usuário nasce sem organização, e só entra
+  //    numa por convite — ver `provisionamento.test.ts`.
   for (const [id, nome] of [
     [IDS.alice, "Alice"], [IDS.bob, "Bob"], [IDS.carol, "Carol"], [IDS.dan, "Dan"],
   ] as const) {
@@ -113,7 +115,18 @@ export async function seedFixtures(client: Client): Promise<void> {
     [IDS.msgA, IDS.convA, IDS.alice]
   );
 
-  // 7. Conhecimento por org (scope 'global' = da organização, sem conversa).
+  // 7. Chave de provider da org A (PD-26). Semeada AQUI, e não dentro do teste:
+  //    cada teste roda numa transação que faz rollback, então semear lá dentro
+  //    desfaz a linha antes da asserção — e os testes que afirmam "ninguém lê a
+  //    chave" passariam no vazio, sem chave nenhuma para ler.
+  await client.query(
+    `insert into public.organization_provider_keys
+       (organization_id, provider, chave_cifrada, ultimos_4, criado_por)
+     values ($1, 'gemini', 'cifra-de-mentira-so-para-o-teste', '4f2c', $2)`,
+    [IDS.orgA, IDS.alice]
+  );
+
+  // 8. Conhecimento por org (scope 'global' = da organização, sem conversa).
   for (const [docId, chunkId, agentId, spaceId, orgId, texto] of [
     [IDS.docA, IDS.chunkA, IDS.agentA, IDS.spaceA, IDS.orgA, "segredo da org A"],
     [IDS.docB, IDS.chunkB, IDS.agentB, IDS.spaceB, IDS.orgB, "segredo da org B"],

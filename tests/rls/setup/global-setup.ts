@@ -50,6 +50,10 @@ async function assertMundoMontado(client: Client): Promise<void> {
     ["fixture: usuários", "auth.users", (n) => n === 4, "4"],
     ["fixture: conversas", "public.conversations", (n) => n === 1, "1"],
     ["fixture: participantes", "public.conversation_participants", (n) => n === 2, "2"],
+    // Sem esta linha, todo o `chaves-por-tenant.test.ts` passa no vazio — ele só
+    // afirma que ninguém LÊ a chave, e sem chave não há o que ler. Foi
+    // exatamente o que aconteceu na primeira versão daquele arquivo.
+    ["fixture: chave de provider", "public.organization_provider_keys", (n) => n === 1, "1"],
   ];
 
   const erros: string[] = [];

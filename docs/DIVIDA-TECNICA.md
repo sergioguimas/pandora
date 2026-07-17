@@ -29,10 +29,114 @@ tem id, severidade, arquivos e ação recomendada. Use os ids (`PD-xx`) em commi
 15. ~~`PD-04b` testes de RLS~~ ✅ *(33 testes + job de CI; mordida provada por mutação)*
 16. `PD-23` `scope='space'` impossível de inserir — ✅ **corrigido no código**;
     ⏳ **falta aplicar em produção** (`20260717000000`) e reverificar com um dump novo
+17. `PD-25` provisionamento de organização + `PD-26` chave por tenant ← **em andamento**
+    (🔴 — schema e testes prontos; falta o código e a UI)
+18. `PD-24` publication do Realtime ausente do baseline (🔴 — bloqueia ambiente novo)
 
 ---
 
 ## 🔴 Alta
+
+### PD-25 — Cadastro aberto + todo usuário na mesma organização 🔴
+
+> **Estado (2026-07-17)**: migration `20260717010000` escrita e coberta por 17 testes
+> novos (61 na suíte). **Falta o código e a UI** — e até lá a migration **não pode ser
+> aplicada isolada**: sem o caminho de convite, um usuário novo nasceria sem organização
+> nenhuma e sem como entrar numa.
+
+Descoberto ao responder "já dá para uma empresa usar isso?". O fluxo era:
+
+**qualquer pessoa** → `/cadastro` (público) → conta criada → trigger
+`handle_new_user_default_organization` insere na org `11111111-…` ("Base Geral") →
+`can_read_org` aprova → **lê todos os agentes, `prompt_base` incluso, e todo o
+conhecimento.**
+
+É o `PD-17` outra vez, trocando *"basta a URL do projeto"* por *"basta um cadastro
+grátis"*. **A RLS nunca esteve errada** — os 33 testes do `PD-04b` provam que ela isola
+organizações. O problema é que havia **uma** organização, e o formulário de cadastro era a
+porta dela. Parede perfeita em volta de uma sala com um inquilino só.
+
+Uma armadilha fechava até a saída manual: `getOrganizationIdForUser` fazia
+`order by created_at asc limit 1` — a associação **mais antiga**. Como o trigger insere no
+instante do cadastro, ela vence sempre. Criar uma org à mão e adicionar o usuário **não
+adiantaria**: ele continuaria resolvendo para a Base Geral.
+
+**Decisões (2026-07-17)**: convite apenas (o `/cadastro` público sai); **uma org por
+usuário** (é o que o código já assume; erro alto se houver zero ou mais de uma — sem
+constraint no banco, porque não dá para conferir o dado de produção daqui); Base Geral vira
+a organização admin/teste do dono.
+
+**Agente 0 / Oráculo: nada a fazer.** Confirmado em produção: estão em `Pandora System`
+com `is_system = true`. O `can_read_org()` (= `is_system_org OR is_org_member`) já os torna
+visíveis a toda org sem clonagem, e o `is_org_member()` os mantém read-only. Está travado
+por `agentes-universais.test.ts`.
+
+**O admin de plataforma é uma flag, não um membro da org do sistema.** Seria o caminho
+curto e quebraria os universais: o read-only deles vem de a org do sistema **não ter
+membros**. Por isso `profiles.is_platform_admin`, e as ações de admin passam pelo client
+admin depois de checar a flag — porta explícita **ao lado** da parede, não um buraco nela.
+Um teste garante que a flag não dá poder algum via RLS.
+
+**Descoberta de caminho**: um usuário **sem organização** ainda lê os agentes universais —
+`is_system_org()` não olha o usuário. Está correto (eles são públicos para autenticados por
+definição), mas não era o que eu esperava, e agora está escrito num teste.
+
+**Falta**: `createOrganization` (org + membro `owner` + `knowledge_space` padrão numa
+transação), convite via `inviteUserByEmail`, reescrita do `getOrganizationIdForUser`,
+fechar o `/cadastro`, UI de membros e painel de admin.
+
+### PD-26 — Chave de API por tenant 🔴
+
+> **Estado (2026-07-17)**: tabela e RLS na migration `20260717010000`, com 11 testes.
+> Falta o módulo de cifra, as actions e a UI.
+
+Modelo de preço: o cliente usa a chave dele (mais barato) ou a da plataforma (mais caro).
+`organization_provider_keys (organization_id, provider, chave_cifrada, ultimos_4)`, única
+por par. **Presença da chave = BYOK; ausência = chave da plataforma.** Sem flag de modo — a
+presença é o modo. Respeita a porta multi-provider do `PD-12`.
+
+**Cifra, não hash.** O pedido original era "guardar como hash, igual senha". Não funciona:
+hash é via de mão única e serve para senha, que só precisa ser **comparada**. A API key
+precisa ser **reenviada** ao Google/OpenAI a cada chamada — de um hash não sai nada, e a
+funcionalidade deixaria de existir. A experiência pedida ("após incluir, nem o dono vê")
+se cumpre com cifra + **nenhum caminho de leitura**: a UI mostra `AIza••••4f2c` a partir de
+`ultimos_4`, sem decifrar nada. Ressalva honesta e registrada: quem tiver o banco **e** o
+segredo da aplicação recupera a chave — é inerente a qualquer sistema que chame API de
+terceiro em nome do cliente.
+
+**Cifra na aplicação (AES-GCM, segredo em env), não `vault`/pgsodium**: o Vault amarra ao
+Supabase, e sair do Cloud está em avaliação (ver `PD-24`).
+
+**RLS fail-closed: zero policies, de propósito.** Nem o dono lê a própria chave pelo banco.
+O acesso mais fino que a RLS oferece é por **linha**, e o que precisa ser negado é uma
+**coluna** — RLS é a ferramenta errada. A resposta certa é não dar acesso nenhum e mediar
+no servidor. Mesma decisão do `PD-09`.
+
+> **A régua aqui é outra**: no resto da suíte, um furo vaza **conteúdo**. Nesta tabela,
+> vaza **dinheiro** — a chave é crédito e a fatura é do cliente.
+
+### PD-24 — A publication do Realtime não está no baseline 🔴
+A migration arquivada `20260425004924_enable_realtime_for_messages` fazia
+`alter publication supabase_realtime add table public.messages`. O baseline **não tem
+isso** — e não por descuido: um `pg_dump --schema=public` **não inclui publications**, que
+são objetos do banco, não do schema.
+
+**Consequência**: um banco novo criado a partir de `migrations/` nasce com o Realtime
+**desligado** para `messages`, e o chat para de atualizar ao vivo — em silêncio, sem erro.
+Produção está bem (a publication foi aplicada em abril). O risco é para qualquer ambiente
+**novo**: auto-hospedado, staging, ou um projeto Supabase separado.
+
+**O `scripts/verify-baseline.mjs` tem o mesmo ponto cego** — ele compara
+`--schema=public`. Conferir publications faz parte do conserto.
+
+**Ação**: migration que adiciona a tabela à publication (idempotente), e estender o
+verificador para comparar publications. Confirmar antes em produção:
+```sql
+select * from pg_publication_tables where pubname = 'supabase_realtime';
+```
+
+> **Lição**: "o dump reproduz o banco" vale para o que o dump **cobre**. Publications,
+> papéis e extensões vivem fora de um dump de schema — e o `PD-22` só olhou dentro dele.
 
 ### PD-23 — `scope='space'` é impossível de inserir, e a opção está na UI 🔴
 
