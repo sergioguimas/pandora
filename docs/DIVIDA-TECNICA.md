@@ -61,10 +61,14 @@ tem id, severidade, arquivos e ação recomendada. Use os ids (`PD-xx`) em commi
 > `20260717000000` (PD-23) também está em prod; (b) aplicar `020000`; (c) registrar as três
 > como aplicadas se voltar a usar `db push`.
 >
-> **Follow-up conhecido**: `getOrganizationIdForUser` agora **lança** para usuário sem org.
-> A página de chaves trata; faltam os outros 3 chamadores (`api/conversations`,
-> `agents-actions`, `conversations-repository`) ganharem uma tela de "aguardando convite"
-> em vez de estourar.
+> **Follow-up do orgless user — resolvido (2026-07-17)**: o guard foi centralizado no
+> **layout do dashboard** (`getOrganizationIdForUserOrNull` → tela `NoOrganization` com
+> saída), que protege TODAS as páginas de uma vez — chat, agentes, config. Isso cobre o
+> caminho de UI dos 3 chamadores (a página de chat chama `createConversationForAgent`, a de
+> agentes chama `createAgent`; nenhuma renderiza sem org). A rota `api/conversations` fica
+> fora do layout e ganhou guarda própria (**403** claro em vez de 500). Os dois server
+> actions só são alcançáveis por páginas já protegidas; um POST direto de um usuário sem org
+> ainda lança o erro cru (benigno, sem risco de dado) — aceitável.
 
 Descoberto ao responder "já dá para uma empresa usar isso?". O fluxo era:
 
