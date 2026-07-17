@@ -1,0 +1,14 @@
+# Fim de linha dos arquivos SQL: sempre LF, inclusive em checkout no Windows.
+#
+# POR QUE ISTO IMPORTA (e não é preferência de estilo)
+# O corpo de uma função PL/pgSQL é guardado VERBATIM em `pg_proc.prosrc`. Se o
+# arquivo chega ao psql com CRLF, os `\r` entram no banco dentro do corpo da
+# função e reaparecem em todo dump seguinte.
+#
+# Esta máquina tem `core.autocrlf = true`, então sem esta regra o `git checkout`
+# converte os .sql para CRLF no disco (o blob no repositório é LF de qualquer
+# forma). O efeito prático apareceu no PD-22: um `git checkout` do baseline fez o
+# `scripts/verify-baseline.mjs` acusar divergência contra produção quando a única
+# diferença era fim de linha. Um verificador que grita lobo por CRLF ensina a
+# ignorá-lo — e o ponto inteiro do PD-22 é que esse verificador seja confiável.
+*.sql text eol=lf

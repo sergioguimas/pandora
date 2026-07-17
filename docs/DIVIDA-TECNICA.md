@@ -26,46 +26,69 @@ tem id, severidade, arquivos e ação recomendada. Use os ids (`PD-xx`) em commi
 13. ~~`PD-20` re-embeddar a base (27/27)~~ ✅
 14. ~~`PD-22` baseline defasado~~ ✅ *(dump novo de prod; baseline regerado e verificado
     sem circularidade em 2026-07-16)*
-15. `PD-04b` testes de RLS ← **próximo** (destravado pelo `PD-22`; é o último item em aberto)
+15. ~~`PD-04b` testes de RLS~~ ✅ *(33 testes + job de CI; mordida provada por mutação)*
+16. `PD-23` `scope='space'` impossível de inserir ← **próximo** (🔴; achado ao escrever o
+    `PD-04b` — precisa de decisão de produto antes de código)
 
 ---
 
-> Não há mais itens 🔴 em aberto.
+## 🔴 Alta
+
+### PD-23 — `scope='space'` é impossível de inserir, e a opção está na UI 🔴
+Descoberto ao ler o schema para as fixtures do `PD-04b`. A constraint em
+`knowledge_documents` **e** `knowledge_chunks`:
+
+```sql
+CHECK ( (scope = 'global'       AND conversation_id IS NULL)
+     OR (scope = 'conversation' AND conversation_id IS NOT NULL) )
+```
+
+`scope='space'` não satisfaz **nenhum** dos dois ramos — com ou sem
+`conversation_id`. Toda inserção é rejeitada.
+
+**Provado**, não deduzido — num banco limpo com o baseline aplicado:
+
+| scope | resultado |
+|---|---|
+| `global` | inseriu |
+| `space` | **rejeitado**: `violates check constraint "knowledge_documents_scope_conversation_check"` |
+| `conversation` (sem `conversation_id`) | rejeitado — correto, esse é o objetivo da constraint |
+
+**Está exposto ao usuário**: `knowledge-ingest-form.tsx` tem
+`<option value="space">Base do contexto/produto</option>`, e
+`ingest-agent-knowledge.ts` aceita `scope: "space"` e insere direto. Escolher
+essa opção na interface bate na constraint. *(A cadeia de código foi lida; falta
+dirigir a UI ponta a ponta para ver a mensagem que o usuário recebe.)*
+
+**Produção tem zero linhas `scope='space'`** — isso é prova, não estimativa: a
+constraint está **VALID** no dump (sem `NOT VALID`), e o Postgres só aceita criar
+uma CHECK válida se **todas** as linhas existentes a satisfizerem.
+
+**Isto reescreve o `PD-15`.** Ele diz que conhecimento de espaço *"era ingerido,
+chunkado, embeddado e nunca usado"* e unificou o `match_agent_knowledge` para
+recuperá-lo — a função consulta `kc.scope = 'space'` até hoje. Mas o dado nunca
+existiu: a escrita já estava barrada pela constraint. O `PD-15` consertou a
+leitura de algo que não tem como ser escrito, e o ramo `space` do RAG é código
+morto na prática.
+
+**Ação**: decidir o que o `space` significa antes de mexer na constraint. Duas
+saídas, e a escolha é de produto:
+1. `space` é um escopo de verdade → a constraint vira
+   `(scope='conversation') = (conversation_id IS NOT NULL)`, e o ramo `space` do
+   `match_agent_knowledge` passa a valer.
+2. `space` nunca foi um escopo, e sim uma **dimensão ortogonal** (o
+   `knowledge_space_id` já existe em documento e chunk, e um doc `global` pode
+   tê-lo) → então some com o valor `space` do enum, da UI e do RPC.
+
+> **Lição**: uma constraint e um enum discordando não fazem barulho até alguém
+> tentar a combinação proibida. O `PD-15` inspecionou o RPC e o app, mas não a
+> constraint — e concluiu sobre o dado sem olhar se o dado podia existir.
+
+---
 
 ## 🟠 Média
 
-### PD-04b — RLS ainda sem teste automatizado
-- **Estado**: o núcleo em TypeScript está coberto (89 testes) e roda no CI. **Falta a
-  camada de RLS** — as policies são a fronteira de segurança e a única verificação até
-  hoje foi manual.
-- **Destravado**: o `PD-22` fechou em 2026-07-16 — o baseline agora reproduz produção, e
-  isso foi **provado contra um dump independente**, não por auto-comparação. O harness de
-  banco (`scripts/verify-baseline.mjs` + `scripts/sql/test-db-bootstrap.sql`) já sobe um
-  Postgres com papéis, `auth.uid()` e o schema real aplicado: é a mesma base que a suíte
-  de RLS vai usar.
-- **Abordagem decidida** (2026-07-16):
-  - **vitest + `pg` falando SQL direto**, não pgTAP e não `supabase-js`. Cada teste roda
-    em transação: `begin; set local role authenticated; set local request.jwt.claims =
-    '{"sub":"<uuid>"}'; …; rollback`. O `auth.uid()` do Supabase lê `request.jwt.claims`,
-    então o "JWT forjado" vira uma linha de `set local` — sem assinar token, sem PostgREST.
-  - **Por que não `supabase-js` + JWT**: exigiria PostgREST + GoTrue de pé (ou seja, o
-    `supabase start` que não roda aqui) para cobrir uma camada onde **nenhum bug real do
-    projeto morou**. `PD-17`, `PD-05`, `PD-09`, `PD-16`, `PD-22` são todos bugs de
-    *predicado de policy*, visíveis no SQL. Até o caso do `anon` se cobre com
-    `set local role anon`.
-  - **Por que não pgTAP**: testa o mesmo predicado, mas fora do vitest — segunda suíte,
-    saída TAP, fixtures em outro vocabulário. O ganho (`supabase test db` nativo no dia em
-    que o CLI funcionar) não paga a duplicação.
-  - **Imagem**: `pgvector/pgvector:pg17` (~450 MB), **não** `supabase/postgres` (~4 GB,
-    cujo pull falha nesta máquina com `unexpected EOF`). O andaime que a imagem do Supabase
-    daria pronto — papéis, schema `extensions` — está explícito em
-    `scripts/sql/test-db-bootstrap.sql`, e o schema `auth` (com `auth.uid()`) vem do dump
-    real. É melhor assim: nada de que a RLS depende fica escondido dentro de uma imagem.
-  - **CI**: job **separado** no `ci.yml`, fora do `npm test`, para o loop local seguir em
-    ~4s sem Docker. O mesmo bootstrap serve local e CI.
-- **Aceite**: isolamento por org; acesso por participante (não por dono); agentes
-  universais legíveis por qualquer org e read-only pelo app; **zero policy aberta**
-  (asserção sobre `pg_policies`) — rodando no CI.
+> Nenhum item 🟠 em aberto.
 
 ---
 
@@ -80,6 +103,70 @@ tem id, severidade, arquivos e ação recomendada. Use os ids (`PD-xx`) em commi
 ---
 
 ## ✅ Concluídos
+
+### PD-04b — RLS coberta por testes 🟠
+De **zero** verificação automatizada da fronteira de segurança para **33 testes** em
+`tests/rls/`, rodando em ~4s contra o schema real de produção.
+
+**Abordagem**: vitest + `pg` falando SQL direto — não pgTAP, não `supabase-js`. Cada teste
+roda em transação e termina em rollback:
+
+```sql
+begin;
+select set_config('request.jwt.claims', '{"sub":"<uuid>"}', true);
+set local role authenticated;
+-- ...
+rollback;
+```
+
+Isso funciona porque `auth.uid()` é, no dump real, apenas
+`current_setting('request.jwt.claims')::jsonb ->> 'sub'`. **O "JWT forjado" é um
+`set_config`** — não há nada para assinar e o PostgREST não participa da decisão de
+acesso. Ele só escolhe o papel e preenche esse setting; quem decide é a policy, e é ela
+que os testes exercitam. Era o que dispensava subir a stack (e, com ela, o `supabase start`).
+
+| Arquivo | Cobre |
+|---|---|
+| `isolamento-org.test.ts` | agentes, conhecimento e conversas não cruzam a fronteira da org; `prompt_base` e conteúdo de chunk não vazam; insert/update/delete na org alheia falham |
+| `participantes.test.ts` | Bob (participante, **não dono**) lê e escreve; Carol (mesma org, **fora da conversa**) não |
+| `agentes-universais.test.ts` | o universal aparece para as duas orgs e é read-only; ninguém injeta conhecimento nele |
+| `policies-abertas.test.ts` | zero `USING (true)`, RLS habilitada em toda tabela, `anon` não lê nada |
+
+**Carol é a peça de projeto que importa**: sem alguém da mesma org e fora da conversa, uma
+policy que filtrasse só por organização passaria como se filtrasse por participante. Ela é
+o que dá sentido ao teste do `PD-05`.
+
+**Provado que os testes mordem** — três mutações no baseline, cada uma revertida depois:
+
+| Mutação | Quem falhou |
+|---|---|
+| Policy `USING (true)` para `anon` (PD-17/PD-22) | 2 testes: a asserção de `pg_policies` e `anon` lendo os 3 agentes |
+| Dropar as policies de participante (PD-05) | 2 testes: exatamente os do Bob |
+| `can_read_org()` retornando `true` (PD-06) | 5 testes de isolamento — inclusive o vazamento literal (`content: 'segredo da org A'` para o Dan) |
+
+A terceira mutação é a que prova mais: ela quebra o isolamento **sem** criar policy aberta,
+e o teste de policy aberta corretamente **não** a pegou. Cada teste carrega o próprio peso,
+em vez de um só cobrir a aparência de todos.
+
+**A mutação também achou um defeito no guard**, e o guard foi consertado: ele fixava
+"exatamente 43 policies", então qualquer mudança de schema abortava a suíte com um erro
+sem relação com RLS. Agora é **exato para o que a suíte possui** (as fixtures) e **frouxo
+para o que ela não possui** (o schema) — fidelidade de schema tem dono, e é o
+`verify-baseline.mjs`. Dois donos para a mesma asserção é dívida.
+
+**Guard contra aprovação vazia**: metade desta suíte afirma AUSÊNCIA ("`anon` não lê nada",
+"nenhuma policy é aberta"). Num banco vazio, tudo isso passa — e passa por vergonha: não há
+o que ler nem policy para ser aberta. O `global-setup` se recusa a rodar se o cenário não
+estiver montado. É o mesmo vício que produziu o `PD-22`.
+
+**CI**: job `rls` separado no `ci.yml`, com `services: pgvector/pgvector:pg17`. Fora do
+`npm test`, que segue em ~4s sem Docker — é o loop de desenvolvimento e não se sacrifica.
+O harness usa o service container quando `RLS_DATABASE_URL` está definida e sobe um
+container próprio quando não está; os dois caminhos foram exercitados.
+
+> **Lição**: teste que nunca foi visto falhar não é verificação, é decoração. As três
+> mutações custaram minutos e mudaram o que a suíte significa — uma delas consertou o
+> guard, e nenhuma teria sido escrita se "33 verdes" fosse aceito como prova.
 
 ### PD-22 — O baseline do `PD-18` não reproduzia produção 🔴
 Descoberto ao planejar o `PD-04b`. O baseline saíra de um dump
@@ -504,3 +591,6 @@ por participante. Removidas as quatro duplicadas; restaram só as de participant
 | 2026-07-16 | PD-04b | Abordagem decidida (vitest + `pg` + `set local role`, job de CI separado com service container). Escrita adiada até o `PD-22` — testar contra baseline defasado provaria a fronteira errada. |
 | 2026-07-16 | PD-22 | **Fechado.** Dump novo de prod; baseline regerado por `scripts/build-baseline.mjs` (auto-testado: no dump velho, reproduz o baseline antigo byte a byte no código). Verificado por `scripts/verify-baseline.mjs` **sem circularidade** — `db_baseline` vs `db_prod`, mesmo `pg_dump`: **idênticos** (13 tabelas, 43 policies, 12 funções, 37 índices, 2 triggers, 0 policies abertas). Drift confirmado como exatamente PD-09 + PD-10. |
 | 2026-07-16 | PD-18 (correção) | O "HTTP 500 em `/images/{name}/json` para todas as imagens" **não reproduz**: `docker image inspect` e `docker run` funcionam. O que falha é o pull da imagem de ~4 GB do `supabase/postgres`. O harness passou a usar `pgvector/pgvector:pg17` + andaime explícito. |
+| 2026-07-17 | PD-04b | **Fechado.** 33 testes em `tests/rls/` (vitest + `pg`, `set local role` + `request.jwt.claims`), job `rls` no CI com service container. Mordida provada por 3 mutações no baseline (policy aberta → 2 falhas; policies de participante dropadas → 2; `can_read_org` sempre true → 5). A mutação achou e consertou um defeito no guard de setup. |
+| 2026-07-17 | PD-23 | **Novo 🔴**: `scope='space'` viola a CHECK de `knowledge_documents`/`knowledge_chunks` — inserção sempre rejeitada, e a opção está na UI. A constraint é VALID no dump, o que prova que prod tem 0 linhas `space`. Reescreve o `PD-15`: ele consertou a leitura de um dado que nunca pôde ser escrito. Descoberto ao ler o schema para as fixtures do `PD-04b`. |
+| 2026-07-17 | CI (pré-existente) | `npm run lint` falha com 12 erros em `src/` — **anteriores** a este arco (confirmado com `git stash`). O passo de Lint do CI deve estar vermelho. Nenhum erro vem dos arquivos novos. |

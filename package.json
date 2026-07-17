@@ -9,7 +9,8 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "reembed:knowledge": "node --env-file=.env.local scripts/reembed-knowledge.mjs"
+    "reembed:knowledge": "node --env-file=.env.local scripts/reembed-knowledge.mjs",
+    "test:rls": "vitest run --config vitest.rls.config.ts"
   },
   "dependencies": {
     "@google/genai": "^1.50.1",
@@ -35,11 +36,13 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
+    "pg": "^8.22.0",
     "supabase": "^2.109.1",
     "tailwindcss": "^4",
     "typescript": "^5",

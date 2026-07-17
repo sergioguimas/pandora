@@ -48,3 +48,45 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ci-service-role-key
           GEMINI_API_KEY: ci-gemini-key
           NEXT_TELEMETRY_DISABLED: "1"
+
+  # Job SEPARADO do `verify` de propósito (PD-04b): esta suíte precisa de um
+  # Postgres, e o `npm test` tem que continuar rodando em ~4s sem Docker e sem
+  # banco — é o loop de desenvolvimento. Aqui a lentidão é aceitável, e rodar em
+  # paralelo com o `verify` não custa tempo de parede.
+  rls:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # Mesma major de produção (17.6). Não é a imagem `supabase/postgres`: o
+        # que ela daria pronto (papéis, schema `extensions`) está explícito em
+        # scripts/sql/test-db-bootstrap.sql, e o schema `auth` — com auth.uid() —
+        # vem do dump real. Nada de que a RLS depende fica escondido numa imagem.
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Testes de RLS
+        run: npm run test:rls
+        env:
+          # Com esta variável definida, o harness usa o service container acima e
+          # não tenta subir um pelo Docker. Ver tests/rls/setup/test-database.ts.
+          RLS_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres

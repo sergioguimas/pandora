@@ -25,15 +25,13 @@
 
 import { execFileSync } from "node:child_process";
 import { readFileSync, existsSync, writeFileSync } from "node:fs";
+import { IMAGE, PATHS, stripForPsql, readAuthDump, readBaseline, CREATE_EXTENSIONS } from "./lib/test-db.mjs";
 
-const IMAGE = "pgvector/pgvector:pg17"; // mesma major de prod (17.6)
 const CID = "pandora-verify-baseline";
-const BASELINE = "supabase/migrations/20260716000000_baseline_schema.sql";
-const AUTH_DUMP = "supabase/schema/20260716_schema_auth.sql";
-const BOOTSTRAP = "scripts/sql/test-db-bootstrap.sql";
+const BASELINE = PATHS.baseline;
 const PROD_DUMP = process.argv[2] ?? "supabase/schema/20260716_schema_public.sql";
 
-for (const f of [BASELINE, AUTH_DUMP, BOOTSTRAP, PROD_DUMP]) {
+for (const f of [BASELINE, PATHS.authDump, PATHS.bootstrap, PROD_DUMP]) {
   if (!existsSync(f)) { console.error(`não achei ${f}`); process.exit(1); }
 }
 
@@ -42,37 +40,18 @@ const docker = (args, opts = {}) =>
 
 const quiet = (args, opts = {}) => { try { return docker(args, { stdio: "pipe", ...opts }); } catch { return null; } };
 
-// Os dumps do pg_dump 18 trazem meta-comandos \restrict que o psql 17 não
-// entende; e `CREATE SCHEMA public` colide com o schema que já existe num banco
-// novo. O baseline já nasce sem os dois (ver build-baseline.mjs); nos dumps
-// crus, tiramos aqui.
-const DROP = [/^\\restrict /, /^\\unrestrict /, /^CREATE SCHEMA public;$/, /^ALTER SCHEMA public OWNER TO pg_database_owner;$/];
-const strip = (path) =>
-  readFileSync(path, "utf8").replace(/\r\n/g, "\n").split("\n")
-    .filter((l) => !DROP.some((re) => re.test(l))).join("\n");
+const strip = (path) => stripForPsql(readFileSync(path, "utf8"));
 
 const psql = (db, sql) =>
   docker(["exec", "-i", CID, "psql", "-U", "postgres", "-v", "ON_ERROR_STOP=1", "-q", "-d", db],
          { input: sql });
 
-// OS DOIS DUMPS SÃO CIRCULARES ENTRE SI.
-// `public` referencia `auth.users` por FK; e `auth` referencia `public` de volta,
-// por exatamente duas linhas: os triggers `on_auth_user_created*`, que executam
-// funções nossas. Nenhuma das duas ordens de aplicação funciona crua.
-// É justamente por isso que o footer do baseline cria esses triggers — o
-// baseline é o dono deles. Aqui separamos as duas metades para poder aplicar
-// numa ordem que existe, e para comparar os dois lados simetricamente:
+// Os dumps de `public` e `auth` são circulares entre si — ver splitAuthDump em
+// lib/test-db.mjs. Separar as metades permite aplicar numa ordem que existe, e
+// comparar os dois lados simetricamente:
 //   db_baseline: andaime → baseline (o footer cria os triggers)
 //   db_prod:     andaime → dump de public → triggers do dump de auth
-const isAuthUsersTrigger = (l) => /^CREATE TRIGGER \S+ AFTER INSERT ON auth\.users/.test(l);
-const authLines = strip(AUTH_DUMP).split("\n");
-const AUTH_SCAFFOLD = authLines.filter((l) => !isAuthUsersTrigger(l)).join("\n");
-const AUTH_TRIGGERS = authLines.filter(isAuthUsersTrigger).join("\n");
-if (AUTH_TRIGGERS.split("\n").filter(Boolean).length !== 2) {
-  console.error("esperava 2 triggers em auth.users no dump de auth; achei " +
-                AUTH_TRIGGERS.split("\n").filter(Boolean).length + ". Confira o dump.");
-  process.exit(1);
-}
+const { scaffold: AUTH_SCAFFOLD, triggers: AUTH_TRIGGERS } = readAuthDump();
 
 const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 
@@ -94,9 +73,8 @@ if (!up) { console.error(docker(["logs", "--tail", "30", CID])); process.exit(1)
 for (const db of ["db_baseline", "db_prod"]) {
   console.log(`==> ${db}: andaime (papéis, extensões, schema auth de prod)`);
   docker(["exec", CID, "createdb", "-U", "postgres", db], { stdio: "pipe" });
-  psql(db, readFileSync(BOOTSTRAP, "utf8"));
-  psql(db, `create extension if not exists pgcrypto with schema extensions;
-            create extension if not exists vector   with schema extensions;`);
+  psql(db, readFileSync(PATHS.bootstrap, "utf8"));
+  psql(db, CREATE_EXTENSIONS);
   psql(db, AUTH_SCAFFOLD);
 }
 
@@ -105,7 +83,7 @@ psql("db_prod", strip(PROD_DUMP));
 psql("db_prod", AUTH_TRIGGERS);
 
 console.log(`==> db_baseline ← ${BASELINE}`);
-psql("db_baseline", readFileSync(BASELINE, "utf8"));
+psql("db_baseline", readBaseline());
 console.log("    aplicou do zero sem erro (ON_ERROR_STOP=1) ✓");
 
 console.log("==> dumpando os dois com o mesmo pg_dump");
