@@ -1,77 +1,89 @@
 import { createClient } from "@/lib/supabase/server";
-import { supabaseAdmin } from "@/lib/supabase/admin";
 
-const DEFAULT_ORGANIZATION_ID = "11111111-1111-1111-1111-111111111111";
+// PD-25: NÃO há mais organização padrão, e nenhum funil para ela.
+//
+// Antes, `getOrganizationIdForUser` caía num `ensureUserInDefaultOrganization`
+// que inseria o usuário na org `11111111-…` ("Base Geral"). Junto com o
+// `/cadastro` público, isso fazia de qualquer cadastro um colega de organização
+// do dono do produto — o buraco do PD-25. O funil morreu: um usuário sem org é
+// um estado legítimo (recém-criado, ainda não convidado), tratado por quem
+// chama, não "consertado" jogando-o numa org compartilhada.
 
-export async function ensureUserInDefaultOrganization(userId: string) {
-  const { data: existing, error: existingError } = await supabaseAdmin
-    .from("organization_members")
-    .select("id")
-    .eq("user_id", userId)
-    .limit(1)
-    .maybeSingle();
-
-  if (existingError) {
-    console.error(existingError);
-    throw new Error("Erro ao verificar organização do usuário.");
-  }
-
-  if (existing) return;
-
-  const { error: insertError } = await supabaseAdmin
-    .from("organization_members")
-    .upsert(
-      {
-        organization_id: DEFAULT_ORGANIZATION_ID,
-        user_id: userId,
-        role: "member",
-      },
-      {
-        onConflict: "organization_id,user_id",
-        ignoreDuplicates: true,
-      }
-    );
-
-  if (insertError) {
-    console.error(insertError);
-    throw new Error("Erro ao adicionar usuário à organização padrão.");
+export class UserWithoutOrganizationError extends Error {
+  constructor(userId: string) {
+    super(`Usuário ${userId} não pertence a nenhuma organização.`);
+    this.name = "UserWithoutOrganizationError";
   }
 }
 
+/**
+ * A organização do usuário. Uma, e exatamente uma (decisão do PD-25).
+ *
+ * Lança `UserWithoutOrganizationError` se ele não tiver org — o chamador decide
+ * o que mostrar (tela de "aguardando convite", por exemplo). Antes isto puxava a
+ * associação mais antiga por `created_at`, o que era frágil e alimentava o
+ * funil; agora, achar mais de uma org é sinal de estado inconsistente e falha
+ * alto em vez de escolher uma em silêncio.
+ */
 export async function getOrganizationIdForUser(userId: string): Promise<string> {
   const supabase = await createClient();
 
   const { data, error } = await supabase
     .from("organization_members")
     .select("organization_id")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+    .eq("user_id", userId);
 
   if (error) {
     throw new Error("Erro ao buscar organização do usuário.");
   }
 
-  if (data?.organization_id) {
-    return data.organization_id as string;
+  const orgs = data ?? [];
+
+  if (orgs.length === 0) {
+    throw new UserWithoutOrganizationError(userId);
   }
 
-  await ensureUserInDefaultOrganization(userId);
+  if (orgs.length > 1) {
+    // Não deveria acontecer com o invariante do PD-25. Se acontecer, é bug de
+    // provisionamento — gritar é melhor que escolher uma e mascarar.
+    throw new Error(
+      `Usuário ${userId} pertence a ${orgs.length} organizações; esperava 1.`
+    );
+  }
 
-  const { data: retryData, error: retryError } = await supabase
+  return orgs[0].organization_id as string;
+}
+
+/** A organização do usuário, ou `null` se ele ainda não pertence a nenhuma. */
+export async function getOrganizationIdForUserOrNull(
+  userId: string
+): Promise<string | null> {
+  try {
+    return await getOrganizationIdForUser(userId);
+  } catch (err) {
+    if (err instanceof UserWithoutOrganizationError) return null;
+    throw err;
+  }
+}
+
+export type OrgRole = "owner" | "admin" | "member";
+
+/** A organização do usuário e o papel dele nela. Lança se não tiver org. */
+export async function getMembershipForUser(
+  userId: string
+): Promise<{ organizationId: string; role: OrgRole }> {
+  const supabase = await createClient();
+  const organizationId = await getOrganizationIdForUser(userId);
+
+  const { data, error } = await supabase
     .from("organization_members")
-    .select("organization_id")
+    .select("role")
+    .eq("organization_id", organizationId)
     .eq("user_id", userId)
-    .order("created_at", { ascending: true })
-    .limit(1)
     .single();
 
-  if (retryError || !retryData?.organization_id) {
-    throw new Error("Organização do usuário não encontrada.");
-  }
-
-  return retryData.organization_id as string;
+  if (error) throw new Error("Erro ao buscar papel do usuário.");
+  return { organizationId, role: data.role as OrgRole };
 }
 
 export async function listOrganizationMembersForUser(userId: string) {

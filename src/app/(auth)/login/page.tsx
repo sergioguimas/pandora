@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { signInWithEmailPassword } from "@/server/actions/auth-actions";
 
 type LoginPageProps = {
@@ -82,13 +81,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         </form>
 
         <p className="mt-6 text-center text-sm text-muted-foreground">
-          Ainda não tem conta?{" "}
-          <Link
-            href="/cadastro"
-            className="font-medium text-primary hover:underline"
-          >
-            Criar conta
-          </Link>
+          O acesso é por convite. Fale com o administrador da sua organização.
         </p>
       </div>
     </main>

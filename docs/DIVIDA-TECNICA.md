@@ -39,10 +39,32 @@ tem id, severidade, arquivos e ação recomendada. Use os ids (`PD-xx`) em commi
 
 ### PD-25 — Cadastro aberto + todo usuário na mesma organização 🔴
 
-> **Estado (2026-07-17)**: migration `20260717010000` escrita e coberta por 17 testes
-> novos (61 na suíte). **Falta o código e a UI** — e até lá a migration **não pode ser
-> aplicada isolada**: sem o caminho de convite, um usuário novo nasceria sem organização
-> nenhuma e sem como entrar numa.
+> **Estado (2026-07-17)**: schema, servidor e **UI de admin e membros prontos**. Feito:
+> RPC `create_organization` (migration `20260717020000`, atômico), `organizations-repository`
+> (criar org com dono, convidar, remover, listar, `isPlatformAdmin`), reescrita do
+> `getOrganizationIdForUser` (sem o funil para a Base Geral), **`/cadastro` removido**, e as
+> telas `/admin` (só plataforma: cria org + convida dono), `/configuracoes/membros`
+> (owner/admin: convida/remove) e a nav entre elas. 66 testes de RLS (5 do RPC).
+>
+> 🔑 **Dois passos de DADO em produção antes de você usar o painel** (são dado, não
+> migration — rode no SQL Editor com seu uuid):
+> 1. `update public.profiles set is_platform_admin = true where id = '<seu-uuid>';`
+>    — sem isto, `/admin` te redireciona.
+> 2. Confirme que você é `owner` da sua org (Base Geral), senão `/configuracoes/*` te barra:
+>    `select role from public.organization_members where user_id = '<seu-uuid>';`
+>    Se vier `member`, `update ... set role='owner' where user_id='<seu-uuid>'`.
+>
+> ⚠️ **A migration `20260717010000` foi aplicada em produção fora de ordem** (via SQL
+> Editor, 2026-07-17), antes do código. Não quebrou nada — o `ensureUserInDefaultOrganization`
+> no código ainda funilava para a Base Geral, então o comportamento não mudou e o buraco
+> **continuou aberto** até este código. Pendências desse descompasso: (a) confirmar se o
+> `20260717000000` (PD-23) também está em prod; (b) aplicar `020000`; (c) registrar as três
+> como aplicadas se voltar a usar `db push`.
+>
+> **Follow-up conhecido**: `getOrganizationIdForUser` agora **lança** para usuário sem org.
+> A página de chaves trata; faltam os outros 3 chamadores (`api/conversations`,
+> `agents-actions`, `conversations-repository`) ganharem uma tela de "aguardando convite"
+> em vez de estourar.
 
 Descoberto ao responder "já dá para uma empresa usar isso?". O fluxo era:
 
@@ -87,8 +109,16 @@ fechar o `/cadastro`, UI de membros e painel de admin.
 
 ### PD-26 — Chave de API por tenant 🔴
 
-> **Estado (2026-07-17)**: tabela e RLS na migration `20260717010000`, com 11 testes.
-> Falta o módulo de cifra, as actions e a UI.
+> **Estado (2026-07-17)**: **servidor + UI de chaves prontos.** Falta só ligar a leitura
+> no `stream`/`retry` (usar a chave do tenant quando existir). Feito: `provider-key-cipher`
+> (AES-256-GCM, 8 testes puros), `provider-keys-repository`, `provider-keys-actions`
+> (autoriza `owner`/`admin` da própria org) e a página `/configuracoes/chaves` com o aviso
+> de sensibilidade e o valor censurado (`••••4f2c`). O build confirma que o `import type`
+> do módulo `server-only` no client component não vaza para o bundle (classe do PD-10).
+>
+> ⚙️ **Nova env obrigatória**: `PROVIDER_KEY_SECRET` (string longa e aleatória). O módulo
+> de cifra **falha alto** sem ela — de propósito, um default seria o mesmo que texto puro.
+> Precisa estar no ambiente do servidor de deploy **e** no job de build do CI.
 
 Modelo de preço: o cliente usa a chave dele (mais barato) ou a da plataforma (mais caro).
 `organization_provider_keys (organization_id, provider, chave_cifrada, ultimos_4)`, única
@@ -749,3 +779,5 @@ por participante. Removidas as quatro duplicadas; restaram só as de participant
 | 2026-07-17 | CI (pré-existente) | `npm run lint` falha com 12 erros em `src/` — **anteriores** a este arco (confirmado com `git stash`). O passo de Lint do CI deve estar vermelho. Nenhum erro vem dos arquivos novos. |
 | 2026-07-17 | PD-23 | Migration `20260717000000` escrita e coberta (44 testes na suíte de RLS). Decisão: **consertar**, não remover — `space` é o único jeito de agentes compartilharem conhecimento. **Ainda não aplicada em produção.** |
 | 2026-07-17 | ferramental | `verify-baseline.mjs` e o harness de RLS passam a aplicar **`migrations/` inteira**, em ordem, e não só o baseline — a partir do `PD-23` existe migration depois dele, e o contrato é "`migrations/` reproduz produção". O diff de divergência virou diferença de conjunto (o posicional virava ruído a cada linha inserida). |
+| 2026-07-17 | PD-25/26 | Camada de servidor: RPC `create_organization` (`020000`), repos de org/chaves, cifra AES-GCM (8 testes), `/cadastro` fechado, UI de chaves. **66 testes de RLS** (5 do RPC, mordida provada por 2 mutações: policy de leitura "razoável" e o trigger da org padrão ressuscitado). Nova env `PROVIDER_KEY_SECRET`. Falta UI de admin/membros e ligar a chave do tenant no `stream`/`retry`. |
+| 2026-07-17 | prod (atenção) | `20260717010000` aplicada em produção fora de ordem, via SQL Editor, antes do código. Sem estrago (o funil no código cobria), mas o `supabase_migrations` não registrou nada. Diagnóstico pendente: confirmar estado de prod e aplicar `000000`/`020000`. |

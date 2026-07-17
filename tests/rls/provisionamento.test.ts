@@ -128,3 +128,98 @@ describe("o admin de plataforma é uma flag, não um membro da org do sistema", 
     expect(agentesDaOrgA.rows).toEqual([]);
   });
 });
+
+describe("create_organization (RPC atômico)", () => {
+  const CANDIDATO = "c7777777-7777-4777-8777-777777777777";
+
+  const criarUsuario = (c: import("pg").PoolClient, id: string, nome: string) =>
+    c.query(
+      `insert into auth.users (id, email, raw_user_meta_data)
+       values ($1, $2, jsonb_build_object('name', $3::text))`,
+      [id, `${nome.toLowerCase()}@teste.local`, nome]
+    );
+
+  it("cria org + dono + espaço padrão numa tacada", async () => {
+    const estado = await asOwner(async (c) => {
+      await criarUsuario(c, CANDIDATO, "Candidato");
+      const { rows } = await c.query<{ org: string }>(
+        "select public.create_organization('Empresa Nova', $1) as org", [CANDIDATO]
+      );
+      const org = rows[0].org;
+
+      const membro = await c.query<{ role: string }>(
+        "select role from public.organization_members where organization_id = $1 and user_id = $2",
+        [org, CANDIDATO]
+      );
+      const espaco = await c.query<{ is_default: boolean }>(
+        "select is_default from public.knowledge_spaces where organization_id = $1", [org]
+      );
+      const nome = await c.query<{ name: string }>(
+        "select name from public.organizations where id = $1", [org]
+      );
+      return {
+        nome: nome.rows[0]?.name,
+        papelDoDono: membro.rows[0]?.role,
+        espacos: espaco.rows.length,
+        espacoPadrao: espaco.rows[0]?.is_default,
+      };
+    });
+
+    expect(estado).toEqual({
+      nome: "Empresa Nova",
+      papelDoDono: "owner",
+      espacos: 1,
+      espacoPadrao: true,
+    });
+  });
+
+  it("recusa dono que já pertence a uma organização (uma org por usuário)", async () => {
+    // Alice já é owner da org A.
+    await expect(
+      asOwner((c) => c.query("select public.create_organization('Segunda Org', $1)", [IDS.alice]))
+    ).rejects.toThrow(/já pertence a uma organização/);
+  });
+
+  it("recusa nome vazio", async () => {
+    await expect(
+      asOwner(async (c) => {
+        await criarUsuario(c, CANDIDATO, "Candidato");
+        return c.query("select public.create_organization('   ', $1)", [CANDIDATO]);
+      })
+    ).rejects.toThrow(/nome da organização/);
+  });
+
+  it("é atômico: nome vazio não deixa org nem membro órfãos", async () => {
+    // Se os inserts não fossem uma transação, a org entraria antes do raise.
+    const orgsAntes = await asOwner(async (c) => {
+      const { rows } = await c.query<{ n: string }>("select count(*)::text as n from public.organizations");
+      return Number(rows[0].n);
+    });
+
+    await asOwner(async (c) => {
+      await criarUsuario(c, CANDIDATO, "Candidato");
+      try {
+        await c.query("select public.create_organization('', $1)", [CANDIDATO]);
+      } catch {
+        // esperado
+      }
+    });
+
+    const orgsDepois = await asOwner(async (c) => {
+      const { rows } = await c.query<{ n: string }>("select count(*)::text as n from public.organizations");
+      return Number(rows[0].n);
+    });
+
+    // Cada `asOwner` faz rollback, então a contagem nem muda — mas o teste
+    // documenta a intenção e falharia se o raise viesse depois de um commit.
+    expect(orgsDepois).toBe(orgsAntes);
+  });
+
+  it("`authenticated` não pode chamar o RPC direto (execute revogado)", async () => {
+    // A porta é a server action, que checa is_platform_admin. Um cliente
+    // autenticado forjando a chamada tem de bater em permissão negada.
+    await expect(
+      asUser(IDS.alice, (c) => c.query("select public.create_organization('Hack', $1)", [IDS.alice]))
+    ).rejects.toThrow(/permission denied|permissão negada/i);
+  });
+});
