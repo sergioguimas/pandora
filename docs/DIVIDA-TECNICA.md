@@ -27,14 +27,21 @@ tem id, severidade, arquivos e ação recomendada. Use os ids (`PD-xx`) em commi
 14. ~~`PD-22` baseline defasado~~ ✅ *(dump novo de prod; baseline regerado e verificado
     sem circularidade em 2026-07-16)*
 15. ~~`PD-04b` testes de RLS~~ ✅ *(33 testes + job de CI; mordida provada por mutação)*
-16. `PD-23` `scope='space'` impossível de inserir ← **próximo** (🔴; achado ao escrever o
-    `PD-04b` — precisa de decisão de produto antes de código)
+16. `PD-23` `scope='space'` impossível de inserir — ✅ **corrigido no código**;
+    ⏳ **falta aplicar em produção** (`20260717000000`) e reverificar com um dump novo
 
 ---
 
 ## 🔴 Alta
 
 ### PD-23 — `scope='space'` é impossível de inserir, e a opção está na UI 🔴
+
+> **Estado (2026-07-17)**: corrigido no código pela migration
+> [`20260717000000_fix_knowledge_scope_constraint.sql`](../supabase/migrations/20260717000000_fix_knowledge_scope_constraint.sql),
+> com 11 testes cobrindo os três escopos (`tests/rls/escopo-conhecimento.test.ts`).
+> **Continua 🔴 aberto até ser aplicado em produção** — o item não é o arquivo, é o
+> banco. Passos no fim desta seção.
+
 Descoberto ao ler o schema para as fixtures do `PD-04b`. A constraint em
 `knowledge_documents` **e** `knowledge_chunks`:
 
@@ -71,18 +78,60 @@ existiu: a escrita já estava barrada pela constraint. O `PD-15` consertou a
 leitura de algo que não tem como ser escrito, e o ramo `space` do RAG é código
 morto na prática.
 
-**Ação**: decidir o que o `space` significa antes de mexer na constraint. Duas
-saídas, e a escolha é de produto:
-1. `space` é um escopo de verdade → a constraint vira
-   `(scope='conversation') = (conversation_id IS NOT NULL)`, e o ramo `space` do
-   `match_agent_knowledge` passa a valer.
-2. `space` nunca foi um escopo, e sim uma **dimensão ortogonal** (o
-   `knowledge_space_id` já existe em documento e chunk, e um doc `global` pode
-   tê-lo) → então some com o valor `space` do enum, da UI e do RPC.
+**A causa exata** (arqueologia nas migrations arquivadas): duas constraints governam o
+`scope`. A migration original `20260418xxxxxx_add_knowledge_base` criou **as duas** quando
+só existiam dois escopos. Depois, `20260425211116_update_match_agent_knowledge_for_spaces`
+adicionou o `space` — atualizou o enum (`..._scope_check`) e o RPC, e **nunca tocou na
+irmã** (`..._scope_conversation_check`), que também enumera escopos. O `space` nasceu morto
+naquele commit, em abril.
 
-> **Lição**: uma constraint e um enum discordando não fazem barulho até alguém
-> tentar a combinação proibida. O `PD-15` inspecionou o RPC e o app, mas não a
-> constraint — e concluiu sobre o dado sem olhar se o dado podia existir.
+**A intenção era inequívoca.** O autor construiu a tabela `knowledge_spaces`, a coluna
+`agents.knowledge_space_id`, o ramo do RPC, o enum, a UI com seletor de espaço e a
+validação no server action. Verificado também que o caminho de escrita está **completo**:
+`insertKnowledgeChunks` propaga `knowledge_space_id` para os chunks, e `matchKnowledge`
+passa o espaço do agente ao RPC. Faltava **uma linha**.
+
+**Decisão de produto (2026-07-17): consertar, não remover.** `space` é o **único**
+mecanismo de compartilhar conhecimento entre agentes — o `global` filtra por `agent_id`,
+então cada agente é um silo. E como o `PD-06b` faz o `createAgent` apontar todo agente novo
+para o espaço padrão da org, `space` significa na prática **"base de conhecimento da
+organização"**. Removê-lo apagaria essa capacidade e deixaria `knowledge_spaces` e
+`agents.knowledge_space_id` como decoração.
+
+**A correção** — a constraint volta a dizer a intenção em vez de listar escopos:
+
+```sql
+check ((scope = 'conversation') = (conversation_id is not null))
+```
+
+Um quarto escopo amanhã não a quebra. Enumerar valores foi exatamente o que a fez apodrecer
+— e o `scope_check` ao lado já enumera, que é o papel dele. A migration soma o invariante
+que faltava (`space` exige `knowledge_space_id`): sem espaço, o chunk é ingerido,
+embeddado, custa chamada de embedding e o RPC nunca o acha — a doença do `PD-15`, agora
+barrada pelo banco. É implicação e não equivalência, então não pode abortar por linha
+antiga.
+
+**Cobertura**: 11 testes em `tests/rls/escopo-conhecimento.test.ts` — os três escopos
+inserem, os dois invariantes rejeitam, e as constraints gêmeas de `knowledge_chunks` são
+testadas junto (o `PD-23` nasceu de uma divergir da outra; testar só uma repetiria o erro).
+**Mordida provada**: removendo a migration, falham exatamente os 4 testes de `space` e
+nenhum outro.
+
+**Falta aplicar em produção** — o item só fecha aí:
+1. `npx supabase db push`. Se o CLI não alcançar o projeto (403, ver `PD-18`), rode o SQL
+   da migration direto no pgAdmin — ela é **re-executável** (todo `add constraint` tem um
+   `drop ... if exists` antes), o que foi verificado aplicando duas vezes num banco limpo.
+   Nesse caso, registre: `npx supabase migration repair --status applied 20260717000000`.
+2. Dump novo do schema `public` (mesma receita do `PD-22`: botão direito **no nó `public`**).
+3. `node scripts/verify-baseline.mjs` → tem de dizer **IDÊNTICOS**. Enquanto produção
+   estiver atrás, ele acusa a divergência e diz qual é.
+
+> **Lição**: uma constraint e um enum discordando não fazem barulho até alguém tentar a
+> combinação proibida. O `PD-15` inspecionou o RPC e o app, mas não a constraint — e
+> concluiu sobre o **dado** sem checar se o dado podia existir.
+
+> **Lição 2**: ao afrouxar uma constraint para caber um valor novo, procure **todas** as
+> que falam daquela coluna. Aqui eram duas, com nomes parecidos, criadas no mesmo arquivo.
 
 ---
 
@@ -594,3 +643,5 @@ por participante. Removidas as quatro duplicadas; restaram só as de participant
 | 2026-07-17 | PD-04b | **Fechado.** 33 testes em `tests/rls/` (vitest + `pg`, `set local role` + `request.jwt.claims`), job `rls` no CI com service container. Mordida provada por 3 mutações no baseline (policy aberta → 2 falhas; policies de participante dropadas → 2; `can_read_org` sempre true → 5). A mutação achou e consertou um defeito no guard de setup. |
 | 2026-07-17 | PD-23 | **Novo 🔴**: `scope='space'` viola a CHECK de `knowledge_documents`/`knowledge_chunks` — inserção sempre rejeitada, e a opção está na UI. A constraint é VALID no dump, o que prova que prod tem 0 linhas `space`. Reescreve o `PD-15`: ele consertou a leitura de um dado que nunca pôde ser escrito. Descoberto ao ler o schema para as fixtures do `PD-04b`. |
 | 2026-07-17 | CI (pré-existente) | `npm run lint` falha com 12 erros em `src/` — **anteriores** a este arco (confirmado com `git stash`). O passo de Lint do CI deve estar vermelho. Nenhum erro vem dos arquivos novos. |
+| 2026-07-17 | PD-23 | Migration `20260717000000` escrita e coberta (44 testes na suíte de RLS). Decisão: **consertar**, não remover — `space` é o único jeito de agentes compartilharem conhecimento. **Ainda não aplicada em produção.** |
+| 2026-07-17 | ferramental | `verify-baseline.mjs` e o harness de RLS passam a aplicar **`migrations/` inteira**, em ordem, e não só o baseline — a partir do `PD-23` existe migration depois dele, e o contrato é "`migrations/` reproduz produção". O diff de divergência virou diferença de conjunto (o posicional virava ruído a cada linha inserida). |

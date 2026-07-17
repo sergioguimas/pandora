@@ -11,7 +11,7 @@
 
 import { execFileSync } from "node:child_process";
 import { Client } from "pg";
-import { IMAGE, readAuthDump, readBootstrap, readBaseline, CREATE_EXTENSIONS } from "../../../scripts/lib/test-db.mjs";
+import { IMAGE, readAuthDump, readBootstrap, readMigrations, CREATE_EXTENSIONS } from "../../../scripts/lib/test-db.mjs";
 
 const CONTAINER = "pandora-rls-tests";
 const PORT = 54329; // fora da faixa do Supabase CLI (54322) para não colidir
@@ -54,7 +54,17 @@ async function applySchema(url: string): Promise<void> {
     await client.query(scaffold);
     // O baseline cria os triggers de auth.users no footer — por isso o scaffold
     // acima entra sem eles. Ver splitAuthDump em scripts/lib/test-db.mjs.
-    await client.query(readBaseline());
+    //
+    // A cadeia INTEIRA de migrations, não só o baseline: os testes têm de rodar
+    // contra o schema que produção vai ter, e desde o PD-23 há migration depois
+    // do baseline.
+    for (const m of readMigrations()) {
+      try {
+        await client.query(m.sql);
+      } catch (err) {
+        throw new Error(`migration ${m.name} falhou ao aplicar: ${(err as Error).message}`);
+      }
+    }
   } finally {
     await client.end();
   }

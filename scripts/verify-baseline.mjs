@@ -25,10 +25,10 @@
 
 import { execFileSync } from "node:child_process";
 import { readFileSync, existsSync, writeFileSync } from "node:fs";
-import { IMAGE, PATHS, stripForPsql, readAuthDump, readBaseline, CREATE_EXTENSIONS } from "./lib/test-db.mjs";
+import { IMAGE, PATHS, stripForPsql, readAuthDump, readMigrations, CREATE_EXTENSIONS } from "./lib/test-db.mjs";
 
 const CID = "pandora-verify-baseline";
-const BASELINE = PATHS.baseline;
+const BASELINE = PATHS.baseline; // usado só na checagem de existência
 const PROD_DUMP = process.argv[2] ?? "supabase/schema/20260716_schema_public.sql";
 
 for (const f of [BASELINE, PATHS.authDump, PATHS.bootstrap, PROD_DUMP]) {
@@ -82,9 +82,20 @@ console.log(`==> db_prod     ← ${PROD_DUMP} + triggers de auth.users`);
 psql("db_prod", strip(PROD_DUMP));
 psql("db_prod", AUTH_TRIGGERS);
 
-console.log(`==> db_baseline ← ${BASELINE}`);
-psql("db_baseline", readBaseline());
-console.log("    aplicou do zero sem erro (ON_ERROR_STOP=1) ✓");
+// A cadeia inteira, em ordem — não só o baseline. Aplicar uma a uma faz o erro
+// apontar o arquivo culpado, em vez de um ponto qualquer de um SQL concatenado.
+const migrations = readMigrations();
+console.log(`==> db_baseline ← ${PATHS.migrationsDir}/ (${migrations.length} migration(s))`);
+for (const m of migrations) {
+  try {
+    psql("db_baseline", m.sql);
+    console.log(`    ${m.name} ✓`);
+  } catch (err) {
+    console.error(`\n❌ ${m.name} falhou ao aplicar num banco limpo:\n${err.stderr ?? err.message}`);
+    process.exit(1);
+  }
+}
+console.log("    a cadeia aplicou do zero sem erro (ON_ERROR_STOP=1) ✓");
 
 console.log("==> dumpando os dois com o mesmo pg_dump");
 const dumps = {};
@@ -124,11 +135,41 @@ if (dumps.db_baseline === dumps.db_prod) {
               ` · ${trg.db_baseline.split("\n").length} triggers em auth.users`);
   console.log(`   policies abertas (USING (true)): ${count(/USING \(true\)/g)}`);
 } else {
-  console.log("❌ DIVERGEM. Primeiras linhas que diferem (- prod / + baseline):");
-  const a = dumps.db_prod.split("\n"), b = dumps.db_baseline.split("\n");
-  let shown = 0;
-  for (let i = 0; i < Math.max(a.length, b.length) && shown < 40; i++) {
-    if (a[i] !== b[i]) { console.log(`  - ${a[i] ?? "(fim)"}`); console.log(`  + ${b[i] ?? "(fim)"}`); shown += 2; }
+  // Diferença de CONJUNTO, não linha a linha: uma linha inserida desloca todas
+  // as seguintes e um diff posicional vira ruído — cada linha aparece como
+  // "mudou" mesmo idêntica. Aqui só sai o que existe de um lado e não do outro.
+  const bag = (s) => {
+    const m = new Map();
+    for (const l of s.split("\n")) m.set(l, (m.get(l) ?? 0) + 1);
+    return m;
+  };
+  const soDe = (a, b) => {
+    const out = [];
+    for (const [linha, n] of bag(a)) {
+      const sobra = n - (bag(b).get(linha) ?? 0);
+      for (let i = 0; i < sobra; i++) out.push(linha);
+    }
+    return out;
+  };
+  const faltando = soDe(dumps.db_prod, dumps.db_baseline);
+  const sobrando = soDe(dumps.db_baseline, dumps.db_prod);
+
+  console.log("❌ DIVERGEM.");
+  if (sobrando.length > 0) {
+    console.log(`\n  Em migrations/ e NÃO em produção (${sobrando.length}):`);
+    for (const l of sobrando.slice(0, 20)) console.log(`    + ${l.trim()}`);
+    if (sobrando.length > 20) console.log(`    ... e mais ${sobrando.length - 20}`);
   }
+  if (faltando.length > 0) {
+    console.log(`\n  Em produção e NÃO em migrations/ (${faltando.length}):`);
+    for (const l of faltando.slice(0, 20)) console.log(`    - ${l.trim()}`);
+    if (faltando.length > 20) console.log(`    ... e mais ${faltando.length - 20}`);
+  }
+  console.log(
+    `\n  Se só houver linhas do lado "+", o mais provável é que produção esteja ATRÁS:` +
+      `\n  há migration escrita que ainda não foi aplicada. Depois do \`db push\`, tire um` +
+      `\n  dump novo e rode isto de novo — só aí o verde significa alguma coisa.` +
+      `\n  Linhas do lado "-" são mais sérias: produção tem algo que migrations/ não cria.`
+  );
   process.exit(1);
 }

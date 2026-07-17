@@ -5,7 +5,8 @@
 // do container fica em cada consumidor, porque os dois querem coisas diferentes
 // (o verificador sobe dois bancos e compara; o harness sobe um e semeia).
 
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 
 // `pgvector/pgvector:pg17` (~450 MB) e não `supabase/postgres` (~4 GB, cujo pull
 // falha nesta máquina com `unexpected EOF`). Mesma major de produção (17.6).
@@ -13,6 +14,7 @@ import { readFileSync } from "node:fs";
 export const IMAGE = "pgvector/pgvector:pg17";
 
 export const PATHS = {
+  migrationsDir: "supabase/migrations",
   baseline: "supabase/migrations/20260716000000_baseline_schema.sql",
   authDump: "supabase/schema/20260716_schema_auth.sql",
   bootstrap: "scripts/sql/test-db-bootstrap.sql",
@@ -63,16 +65,32 @@ export function splitAuthDump(text) {
 export const readAuthDump = () => splitAuthDump(readFileSync(PATHS.authDump, "utf8"));
 export const readBootstrap = () => readFileSync(PATHS.bootstrap, "utf8");
 
-// CRLF→LF também aqui, e não só nos dumps. O corpo de uma função PL/pgSQL é
-// guardado VERBATIM em `pg_proc.prosrc`: aplicar o baseline com CRLF põe `\r`
-// dentro das funções no banco, e aí ele diverge de um banco construído a partir
-// do dump (que passa por `stripForPsql`). A assimetria fez o verificador acusar
-// divergência contra produção quando a única diferença era fim de linha —
-// depois de um `git checkout` converter o arquivo (ver .gitattributes).
-//
-// O `.gitattributes` resolve na origem; isto aqui garante que o verificador meça
-// SCHEMA e não espaço em branco, mesmo se o arquivo chegar torto por outra via.
-export const readBaseline = () => readFileSync(PATHS.baseline, "utf8").replace(/\r\n/g, "\n");
+/**
+ * TODAS as migrations, na ordem em que a CLI as aplica (nome crescente).
+ *
+ * Não só o baseline: a partir do PD-23 existe migration DEPOIS dele, e produção
+ * é `baseline + as seguintes`. Quem monta um banco para comparar com prod tem de
+ * aplicar a cadeia inteira — aplicar só o baseline faria o verificador acusar
+ * divergência no minuto em que a migration nova fosse ao ar. O contrato é
+ * "`migrations/` reproduz produção", não "o baseline reproduz produção".
+ *
+ * CRLF→LF aqui também, e não só nos dumps: o corpo de uma função PL/pgSQL é
+ * guardado VERBATIM em `pg_proc.prosrc`, então aplicar com CRLF põe `\r` dentro
+ * das funções no banco, e aí ele diverge de um banco construído a partir do dump
+ * (que passa por `stripForPsql`). A assimetria já fez o verificador acusar
+ * divergência contra produção quando a única diferença era fim de linha, depois
+ * de um `git checkout` converter o arquivo. O `.gitattributes` resolve na
+ * origem; isto garante que se meça SCHEMA e não espaço em branco, mesmo se o
+ * arquivo chegar torto por outra via.
+ */
+export function readMigrations() {
+  const files = readdirSync(PATHS.migrationsDir).filter((f) => f.endsWith(".sql")).sort();
+  if (files.length === 0) throw new Error(`nenhuma migration em ${PATHS.migrationsDir}`);
+  return files.map((name) => ({
+    name,
+    sql: readFileSync(join(PATHS.migrationsDir, name), "utf8").replace(/\r\n/g, "\n"),
+  }));
+}
 
 export const CREATE_EXTENSIONS = `
   create extension if not exists pgcrypto with schema extensions;
