@@ -24,7 +24,9 @@ tem id, severidade, arquivos e ação recomendada. Use os ids (`PD-xx`) em commi
 11. ~~`PD-18` baseline — migrations voltam a reproduzir produção~~ ✅ *(verificado do zero)*
 12. ~~`PD-11` `taskType` nos embeddings · `PD-12` terreno multi-provider · `PD-21` `retryable`~~ ✅
 13. ~~`PD-20` re-embeddar a base (27/27)~~ ✅
-14. `PD-04b` testes de RLS ← **próximo** (destravado pelo `PD-18`; é o último item em aberto)
+14. ~~`PD-22` baseline defasado~~ ✅ *(dump novo de prod; baseline regerado e verificado
+    sem circularidade em 2026-07-16)*
+15. `PD-04b` testes de RLS ← **próximo** (destravado pelo `PD-22`; é o último item em aberto)
 
 ---
 
@@ -33,16 +35,37 @@ tem id, severidade, arquivos e ação recomendada. Use os ids (`PD-xx`) em commi
 ## 🟠 Média
 
 ### PD-04b — RLS ainda sem teste automatizado
-- **Estado**: o núcleo em TypeScript está coberto (81 testes) e roda no CI. **Falta a
+- **Estado**: o núcleo em TypeScript está coberto (89 testes) e roda no CI. **Falta a
   camada de RLS** — as policies são a fronteira de segurança e a única verificação até
   hoje foi manual.
-- **Destravado pelo `PD-18`**: as migrations agora reproduzem produção, então um banco
-  local finalmente é confiável para testar policies.
-- **Bloqueado por ambiente**: `supabase test db` precisa do `supabase start`, que falha
-  neste ambiente (ver a nota de incompatibilidade no `PD-18` concluído). Alternativa
-  enquanto isso: pgTAP sobre a mesma abordagem usada para verificar o baseline
-  (container `supabase/postgres` + `psql`), sem depender do CLI.
-- **Aceite**: teste cobrindo isolamento por org e por participante, rodando no CI.
+- **Destravado**: o `PD-22` fechou em 2026-07-16 — o baseline agora reproduz produção, e
+  isso foi **provado contra um dump independente**, não por auto-comparação. O harness de
+  banco (`scripts/verify-baseline.mjs` + `scripts/sql/test-db-bootstrap.sql`) já sobe um
+  Postgres com papéis, `auth.uid()` e o schema real aplicado: é a mesma base que a suíte
+  de RLS vai usar.
+- **Abordagem decidida** (2026-07-16):
+  - **vitest + `pg` falando SQL direto**, não pgTAP e não `supabase-js`. Cada teste roda
+    em transação: `begin; set local role authenticated; set local request.jwt.claims =
+    '{"sub":"<uuid>"}'; …; rollback`. O `auth.uid()` do Supabase lê `request.jwt.claims`,
+    então o "JWT forjado" vira uma linha de `set local` — sem assinar token, sem PostgREST.
+  - **Por que não `supabase-js` + JWT**: exigiria PostgREST + GoTrue de pé (ou seja, o
+    `supabase start` que não roda aqui) para cobrir uma camada onde **nenhum bug real do
+    projeto morou**. `PD-17`, `PD-05`, `PD-09`, `PD-16`, `PD-22` são todos bugs de
+    *predicado de policy*, visíveis no SQL. Até o caso do `anon` se cobre com
+    `set local role anon`.
+  - **Por que não pgTAP**: testa o mesmo predicado, mas fora do vitest — segunda suíte,
+    saída TAP, fixtures em outro vocabulário. O ganho (`supabase test db` nativo no dia em
+    que o CLI funcionar) não paga a duplicação.
+  - **Imagem**: `pgvector/pgvector:pg17` (~450 MB), **não** `supabase/postgres` (~4 GB,
+    cujo pull falha nesta máquina com `unexpected EOF`). O andaime que a imagem do Supabase
+    daria pronto — papéis, schema `extensions` — está explícito em
+    `scripts/sql/test-db-bootstrap.sql`, e o schema `auth` (com `auth.uid()`) vem do dump
+    real. É melhor assim: nada de que a RLS depende fica escondido dentro de uma imagem.
+  - **CI**: job **separado** no `ci.yml`, fora do `npm test`, para o loop local seguir em
+    ~4s sem Docker. O mesmo bootstrap serve local e CI.
+- **Aceite**: isolamento por org; acesso por participante (não por dono); agentes
+  universais legíveis por qualquer org e read-only pelo app; **zero policy aberta**
+  (asserção sobre `pg_policies`) — rodando no CI.
 
 ---
 
@@ -57,6 +80,67 @@ tem id, severidade, arquivos e ação recomendada. Use os ids (`PD-xx`) em commi
 ---
 
 ## ✅ Concluídos
+
+### PD-22 — O baseline do `PD-18` não reproduzia produção 🔴
+Descoberto ao planejar o `PD-04b`. O baseline saíra de um dump
+(`20260715_schema_public.sql`, `-- Started on 2026-07-15 09:12:27`) **anterior** às
+migrations `150000` (`PD-09`) e `160000` (`PD-10`) — apesar de o cabeçalho afirmar
+*"capturado depois de aplicados PD-06/09/10/15/16/17"*.
+
+**A prova não precisou de banco**: o app lê `agents.modo_resposta` em ~10 pontos e
+produção tem a coluna (o `PD-10` está em uso pela UI). O baseline não a criava. Logo, um
+banco levantado só de `migrations/` **não rodava o app**.
+
+**Por que o `PD-18` não pegou — a verificação era circular.** A tabela "prod 43 / local
+43 ✓" comparava o banco gerado *a partir do dump* com *o próprio dump*: verde por
+construção. O método era bom; a **entrada** é que estava velha.
+
+**Resolução** (2026-07-16):
+1. Dump novo de produção (`20260716_schema_public.sql` + `_auth.sql`), com `OWNER` e
+   `GRANT` preservados — os 32 `GRANT ... TO anon` são a superfície do `PD-17` e não
+   podem sumir do baseline.
+2. Baseline **regerado por script** ([`scripts/build-baseline.mjs`](../scripts/build-baseline.mjs)),
+   não editado à mão. Auto-teste: rodando no dump **velho**, o script reproduz o baseline
+   antigo com zero diferença em linhas de código — prova de que a transformação é a mesma.
+3. Verificado por [`scripts/verify-baseline.mjs`](../scripts/verify-baseline.mjs), **sem
+   circularidade**: dois bancos do mesmo andaime, `db_baseline` ← `migrations/` e
+   `db_prod` ← dump de produção, dumpados pelo **mesmo** `pg_dump` e comparados.
+
+```
+✅ IDÊNTICOS — o baseline reproduz produção.
+   13 tabelas · 43 policies · 12 funções · 37 índices · 2 triggers em auth.users
+   policies abertas (USING (true)): 0
+```
+
+**O drift era exatamente o previsto e nada mais.** O diff `public` entre os dois dumps de
+prod deu 30 linhas: a troca 3-por-3 de policies do `PD-09` (sai a aberta
+`agent_knowledge_files_select_authenticated` e as duas `message_attachments` da Era 1) e a
+coluna `modo_resposta` + `CHECK` do `PD-10`. Funções, tabelas, índices e triggers:
+idênticos. O `auth` não mudou desde 15/07.
+
+**Limpeza junto**: os dumps de 15/07 saíram do repositório (`git rm` — seguem no
+histórico). O defasado `20260715_schema_public.sql` era literalmente a mina que causou
+este item; `20260715_schema_auth.sql` era byte a byte igual ao de 16/07; e
+`20260715_schema_pgdump.sql` era uma duplicata mais velha de `public`. Fica **um dump de
+cada vez** em `supabase/schema/`, e o `build-baseline.mjs` agora **recusa rodar** se achar
+mais de um `*_schema_public.sql` — foi assim que o baseline saiu do arquivo errado com o
+certo ao lado. Os dumps de **dados** (`*_data_*.sql`, com `auth.users` e conversas) seguem
+ignorados pelo `.gitignore` e nunca foram rastreados — conferido.
+
+**Achados de caminho:**
+- **Os dumps de `public` e `auth` são circulares entre si**: `public` referencia
+  `auth.users` por FK, e `auth` referencia `public` de volta em exatamente duas linhas —
+  os triggers `on_auth_user_created*`. Nenhuma ordem de aplicação crua funciona. O footer
+  do baseline existe justamente porque **o baseline é o dono** desses triggers.
+- **Contagem é verificação fraca.** `43 = 43` bate mesmo se o *corpo* de uma policy mudar
+  — e o corpo é onde mora a fronteira de segurança. Por isso o verificador compara texto,
+  dumpando os dois lados com o mesmo binário para eliminar ruído de formato.
+
+> **Lição**: "verificado" só vale se a fonte da verdade for **independente** do artefato
+> verificado. Comparar o gerado com aquilo de que ele foi gerado sempre dá verde.
+
+> **Lição 2**: o `PD-04b` é o teste do `PD-18`. Uma asserção de `pg_policies` sem
+> `qual = 'true'` teria pego isto no dia seguinte.
 
 ### PD-01 — README alinhado ao código
 README reescrito para refletir a stack real (Next 16 + Gemini; não Fastify/OpenAI/Vite)
@@ -299,6 +383,11 @@ migração de dado é evento único e pertence ao histórico, não a um arquivo 
 
 **Verificação** (banco limpo → aplica só `migrations/` → compara com o dump de prod):
 
+> ⚠️ **Esta tabela não vale — ver `PD-22`.** A comparação foi **circular**: o baseline foi
+> gerado *do dump* e comparado *com o mesmo dump*. Todo par bate por construção. E o dump
+> era anterior às migrations `150000` (`PD-09`) e `160000` (`PD-10`), que ficaram de fora
+> do baseline. A coluna "prod" abaixo é, na verdade, "o dump de 15/07 09:12".
+
 | | prod | local |
 |---|---|---|
 | Funções | 12 | 12 ✓ |
@@ -320,6 +409,19 @@ migração de dado é evento único e pertence ao histórico, não a um arquivo 
   ambiente (Docker Engine 29.1.2 → HTTP 500 em `/images/{name}/json` para todas as
   imagens; `pull` funciona, `inspect` não; forçar a API v1.51→v1.52 não muda). Usei
   container `supabase/postgres` + `psql`, que exercita o mesmo SQL.
+
+  > ⚠️ **Correção (2026-07-16, no `PD-22`)**: a parte do "HTTP 500 em `/images/{name}/json`
+  > para todas as imagens" **não reproduz mais**. `docker image inspect` respondeu normal
+  > em três imagens locais (`hello-world`, `postgres:15-alpine`, `supabase/gotrue`) e
+  > `docker run hello-world` funciona. O que de fato falha aqui é o **pull da imagem
+  > `supabase/postgres`** (~4 GB), com `unexpected EOF` — imagens de ~450 MB baixam sem
+  > problema. Há também um snapshot órfão do containerd que quebra o `docker system df`
+  > (`lstat .../snapshots/2251/fs: no such file or directory`), provável resquício do
+  > mesmo episódio.
+  >
+  > **`supabase start` em si não foi retestado** — pode ser que funcione hoje. Não muda o
+  > plano do `PD-04b` (a suíte não precisa do CLI e o job de CI não deve depender dele),
+  > mas a justificativa "o Docker está quebrado" não pode mais ser usada sem reconferir.
 - O CLI também não alcança o projeto remoto: **403** — a conta autenticada só enxerga
   outro projeto. Por isso o baseline foi gerado do dump, e não por `supabase db pull`.
 
@@ -398,3 +500,7 @@ por participante. Removidas as quatro duplicadas; restaram só as de participant
 | 2026-07-16 | PD-18 + PD-13 | Migrations 1–20 arquivadas; baseline `20260716000000` gerado do dump real. **Verificado**: banco limpo + só `migrations/` reproduz prod (12 funções, 43 policies, 6 triggers, 13 tabelas, 101 colunas, 52 índices). `migration repair` aplicado: local e remoto listam só o baseline. |
 | 2026-07-16 | PD-11 + PD-12 + PD-21 | `taskType` nos embeddings; despacho por provider em `providers/stream.ts` (agente `openai` gerava com Gemini em silêncio); `retryable` deixa de ser descartado no wrap. **89 testes.** |
 | 2026-07-16 | PD-20 | `npm run reembed:knowledge` executado: 27/27 chunks regerados com `RETRIEVAL_DOCUMENT`. Query e documento voltam ao mesmo espaço vetorial. |
+| 2026-07-16 | PD-22 | **Novo 🔴**: o baseline do `PD-18` não reproduz produção — o dump usado é anterior às migrations `150000`/`160000`, então falta o `PD-09` e o `PD-10` inteiros (inclusive a coluna `modo_resposta`, que o app lê). A verificação do `PD-18` não pegou porque comparava o baseline com o dump de que ele foi gerado. Descoberto ao planejar o `PD-04b`. |
+| 2026-07-16 | PD-04b | Abordagem decidida (vitest + `pg` + `set local role`, job de CI separado com service container). Escrita adiada até o `PD-22` — testar contra baseline defasado provaria a fronteira errada. |
+| 2026-07-16 | PD-22 | **Fechado.** Dump novo de prod; baseline regerado por `scripts/build-baseline.mjs` (auto-testado: no dump velho, reproduz o baseline antigo byte a byte no código). Verificado por `scripts/verify-baseline.mjs` **sem circularidade** — `db_baseline` vs `db_prod`, mesmo `pg_dump`: **idênticos** (13 tabelas, 43 policies, 12 funções, 37 índices, 2 triggers, 0 policies abertas). Drift confirmado como exatamente PD-09 + PD-10. |
+| 2026-07-16 | PD-18 (correção) | O "HTTP 500 em `/images/{name}/json` para todas as imagens" **não reproduz**: `docker image inspect` e `docker run` funcionam. O que falha é o pull da imagem de ~4 GB do `supabase/postgres`. O harness passou a usar `pgvector/pgvector:pg17` + andaime explícito. |

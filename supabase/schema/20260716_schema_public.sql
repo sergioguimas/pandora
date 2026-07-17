@@ -1,47 +1,8 @@
--- ============================================================================
--- BASELINE — schema completo do Pandora (PD-18)
---
--- ⚠️  ARQUIVO GERADO. Não edite à mão — rode `node scripts/build-baseline.mjs`.
---
--- Substitui as migrations 1–20, arquivadas em `supabase/schema/archive/`.
---
--- PROCEDÊNCIA
---   Fonte:    supabase/schema/20260716_schema_public.sql
---   Capturado: 2026-07-16 16:50:25 (do cabeçalho do próprio pg_dump)
---
--- POR QUE EXISTE
--- As migrations antigas não reproduziam o banco. Comprovado aplicando-as num
--- Postgres limpo: 17 passaram e a 18ª (multitenant) abortou, porque dependia de
--- DADOS de produção — procurava os agentes `Agente 0` e `Oráculo`, que só
--- existem no banco real. A migration #2 ainda semeava 3 agentes que foram
--- renomeados/removidos pela UI e não existem mais em produção. Somava-se a isso
--- o drift: objetos vivos que nenhuma migration criava.
---
--- REGRAS DESTE ARQUIVO
---   - Só SCHEMA. Nenhum seed de dado de negócio: um banco novo nasce vazio.
---   - Nenhum passo dependente de dados. Migrações de dados são eventos únicos e
---     pertencem ao histórico, não a um arquivo que precisa ser replayável.
---
--- HISTÓRICO DE UMA CILADA (PD-22)
--- A primeira versão deste baseline saiu de um dump anterior às migrations
--- `150000` (PD-09) e `160000` (PD-10) — faltavam a policy escopada de
--- `agent_knowledge_files` e a coluna `modo_resposta`, que o app lê. Passou
--- despercebido porque a verificação comparava o baseline com o dump de que ele
--- foi gerado: circular, sempre verde. Ao verificar, a fonte da verdade precisa
--- ser INDEPENDENTE do artefato verificado.
---
--- EM PRODUÇÃO ESTE ARQUIVO NÃO DEVE SER EXECUTADO — o schema já está aplicado.
--- Registre-o como aplicado:
---   npx supabase migration repair --status applied 20260716000000
--- ============================================================================
-
--- Extensões (o dump do schema `public` não as inclui)
-create extension if not exists pgcrypto with schema extensions;
-create extension if not exists vector with schema extensions;
 --
 -- PostgreSQL database dump
 --
 
+\restrict xkpZMcxDYhL6V7mxPUzkSsRQxg9BED1FtbkSipCahdbpqnHEsnj7iMrMSzNumev
 
 -- Dumped from database version 17.6
 -- Dumped by pg_dump version 18.1
@@ -65,8 +26,10 @@ SET row_security = off;
 -- Name: public; Type: SCHEMA; Schema: -; Owner: pg_database_owner
 --
 
+CREATE SCHEMA public;
 
 
+ALTER SCHEMA public OWNER TO pg_database_owner;
 
 --
 -- TOC entry 4323 (class 0 OID 0)
@@ -2172,36 +2135,5 @@ ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON T
 -- PostgreSQL database dump complete
 --
 
+\unrestrict xkpZMcxDYhL6V7mxPUzkSsRQxg9BED1FtbkSipCahdbpqnHEsnj7iMrMSzNumev
 
-
--- ============================================================================
--- Objetos fora do schema `public` que fazem parte do produto
--- ============================================================================
-
--- Triggers em auth.users. Vivem no schema `auth` (fora do dump de `public`),
--- mas as funções que executam são nossas. `handle_new_user_default_organization`
--- era drift: existia no banco sem nenhuma migration que a criasse.
-drop trigger if exists on_auth_user_created on auth.users;
-create trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute function public.handle_new_user();
-
-drop trigger if exists on_auth_user_created_add_default_organization on auth.users;
-create trigger on_auth_user_created_add_default_organization
-  after insert on auth.users
-  for each row execute function public.handle_new_user_default_organization();
-
--- Buckets de storage. As tabelas de `storage` são criadas pelo storage-api, que
--- num `supabase db reset` já subiu antes das migrations. O guard evita quebrar
--- em ambientes sem o serviço de storage.
--- Sem policies de propósito: fail-closed até o upload existir (PD-09).
-do $$
-begin
-  if to_regclass('storage.buckets') is not null then
-    insert into storage.buckets (id, name, public, file_size_limit)
-    values
-      ('message-attachments', 'message-attachments', false, 26214400),
-      ('agent-knowledge',     'agent-knowledge',     false, 26214400)
-    on conflict (id) do nothing;
-  end if;
-end $$;
