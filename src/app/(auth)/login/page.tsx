@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { signInWithEmailPassword } from "@/server/actions/auth-actions";
 
 type LoginPageProps = {
@@ -50,6 +51,12 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           </div>
         )}
 
+        {error === "link_invalido" && (
+          <div className="mt-5 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            O link de acesso expirou ou é inválido. Peça um novo abaixo.
+          </div>
+        )}
+
         <form action={signInWithEmailPassword} className="mt-6 space-y-4">
           <div className="space-y-1.5">
             <label className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
@@ -81,7 +88,10 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         </form>
 
         <p className="mt-6 text-center text-sm text-muted-foreground">
-          O acesso é por convite. Fale com o administrador da sua organização.
+          Primeiro acesso ou esqueceu a senha?{" "}
+          <Link href="/recuperar-senha" className="font-medium text-primary hover:underline">
+            Definir senha
+          </Link>
         </p>
       </div>
     </main>
