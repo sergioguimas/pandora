@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { isOrgEffectivelyActive } from "@/lib/org-lifecycle";
 
 // PD-25: NÃO há mais organização padrão, e nenhum funil para ela.
 //
@@ -64,6 +65,28 @@ export async function getOrganizationIdForUserOrNull(
     if (err instanceof UserWithoutOrganizationError) return null;
     throw err;
   }
+}
+
+/** A organização do usuário + se ela está EFETIVAMENTE ativa (PD-27):
+ *  `is_active` manual E dentro do prazo (`active_until`). `null` = sem org.
+ *  Usado no bloqueio de org inativa (layout do dashboard, rotas de API). */
+export async function getOrganizationAccessForUser(
+  userId: string
+): Promise<{ organizationId: string; active: boolean } | null> {
+  const organizationId = await getOrganizationIdForUserOrNull(userId);
+  if (!organizationId) return null;
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("organizations")
+    .select("is_active, active_until")
+    .eq("id", organizationId)
+    .single();
+
+  if (error) throw new Error("Erro ao verificar status da organização.");
+
+  const active = isOrgEffectivelyActive(data.is_active, data.active_until);
+  return { organizationId, active };
 }
 
 export type OrgRole = "owner" | "admin" | "member";

@@ -1,5 +1,6 @@
 import "server-only";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { diasRestantes } from "@/lib/org-lifecycle";
 
 // Operações privilegiadas de organização (PD-25). Tudo aqui roda com o client
 // admin (service_role, bypassa RLS) e SÓ deve ser chamado depois de a action
@@ -64,14 +65,55 @@ async function inviteOrGetUserId(email: string): Promise<string> {
  * Cria uma organização e convida seu primeiro dono por e-mail. Só o admin de
  * plataforma chama isto (a autorização é da action). O owner é convidado (recebe
  * o e-mail de senha) e vira `owner` via o RPC atômico.
+ *
+ * `activeDays` e `keyMode` (PD-27) são aplicados num UPDATE logo após o RPC — o
+ * RPC segue com 2 args (já está em produção), e estes campos têm default seguro,
+ * então mesmo que o UPDATE falhe a org nasce ativa e em modo 'platform'.
  */
 export async function createOrganizationWithOwner(
   orgName: string,
-  ownerEmail: string
+  ownerEmail: string,
+  options?: { activeDays?: number | null; keyMode?: "platform" | "own" }
 ): Promise<{ organizationId: string; ownerUserId: string }> {
   const ownerUserId = await inviteOrGetUserId(ownerEmail);
   const organizationId = await createOrganization(orgName, ownerUserId);
+
+  const activeUntil =
+    options?.activeDays && options.activeDays > 0
+      ? new Date(Date.now() + options.activeDays * 24 * 60 * 60 * 1000).toISOString()
+      : null; // sem prazo
+
+  const { error } = await supabaseAdmin
+    .from("organizations")
+    .update({ active_until: activeUntil, key_mode: options?.keyMode ?? "platform" })
+    .eq("id", organizationId);
+
+  if (error) throw new Error("Organização criada, mas falhou ao aplicar prazo/modo de chave.");
+
   return { organizationId, ownerUserId };
+}
+
+/** Liga/desliga uma organização (PD-27). Desativar bloqueia o acesso dos membros
+ *  sem excluir nada; reativar libera. A org do sistema não pode ser desativada. */
+export async function setOrganizationActive(
+  organizationId: string,
+  active: boolean
+): Promise<void> {
+  const { data: org, error: readErr } = await supabaseAdmin
+    .from("organizations")
+    .select("is_system")
+    .eq("id", organizationId)
+    .maybeSingle();
+
+  if (readErr) throw new Error("Erro ao localizar a organização.");
+  if (org?.is_system) throw new Error("A organização do sistema não pode ser desativada.");
+
+  const { error } = await supabaseAdmin
+    .from("organizations")
+    .update({ is_active: active })
+    .eq("id", organizationId);
+
+  if (error) throw new Error("Erro ao alterar o status da organização.");
 }
 
 /** Convida um usuário para uma organização existente, como `member`. Idempotente. */
@@ -130,28 +172,40 @@ export type OrganizationSummary = {
   isSystem: boolean;
   memberCount: number;
   createdAt: string;
+  isActive: boolean;
+  activeUntil: string | null;
+  /** Dias restantes até expirar; null = sem prazo; <=0 = expirada. */
+  diasRestantes: number | null;
+  keyMode: "platform" | "own";
+  /** true = a org tem chave própria cadastrada ("api key utilizada"). */
+  hasOwnKey: boolean;
 };
 
 /** Todas as organizações, para o painel de admin de plataforma. */
 export async function listAllOrganizations(): Promise<OrganizationSummary[]> {
   const { data: orgs, error } = await supabaseAdmin
     .from("organizations")
-    .select("id, name, is_system, created_at")
+    .select("id, name, is_system, created_at, is_active, active_until, key_mode")
     .order("created_at", { ascending: true });
 
   if (error) throw new Error("Erro ao listar organizações.");
 
-  // Contagem de membros por org, numa consulta.
+  // Contagem de membros e presença de chave própria, numa consulta cada.
   const { data: members, error: memErr } = await supabaseAdmin
     .from("organization_members")
     .select("organization_id");
-
   if (memErr) throw new Error("Erro ao contar membros.");
+
+  const { data: keys, error: keyErr } = await supabaseAdmin
+    .from("organization_provider_keys")
+    .select("organization_id");
+  if (keyErr) throw new Error("Erro ao verificar chaves.");
 
   const contagem = new Map<string, number>();
   for (const m of members ?? []) {
     contagem.set(m.organization_id, (contagem.get(m.organization_id) ?? 0) + 1);
   }
+  const comChave = new Set((keys ?? []).map((k) => k.organization_id));
 
   return (orgs ?? []).map((o) => ({
     id: o.id,
@@ -159,5 +213,10 @@ export async function listAllOrganizations(): Promise<OrganizationSummary[]> {
     isSystem: o.is_system,
     memberCount: contagem.get(o.id) ?? 0,
     createdAt: o.created_at,
+    isActive: o.is_active,
+    activeUntil: o.active_until,
+    diasRestantes: diasRestantes(o.active_until),
+    keyMode: o.key_mode === "own" ? "own" : "platform",
+    hasOwnKey: comChave.has(o.id),
   }));
 }

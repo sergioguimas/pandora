@@ -319,7 +319,7 @@ describe("orchestrateConversation — modo de resposta (PD-10)", () => {
   });
 });
 
-describe("orchestrateConversation — chave do tenant (PD-26)", () => {
+describe("orchestrateConversation — chave do tenant (PD-26/27)", () => {
   /** Captura o `apiKey` de cada chamada ao modelo. */
   function spyApiKey() {
     const keys: Array<string | undefined> = [];
@@ -332,13 +332,13 @@ describe("orchestrateConversation — chave do tenant (PD-26)", () => {
     };
   }
 
-  it("injeta a chave do tenant no streamModel quando existe para o provider", async () => {
+  it("modo 'own': injeta a chave do tenant quando existe para o provider", async () => {
     const spy = spyApiKey();
 
     await collect(
       makeDeps({
         listAgents: async () => [makeAgent({ provider: "gemini" })],
-        getTenantApiKeys: async () => ({ gemini: "chave-do-tenant" }),
+        getTenantApiKeys: async () => ({ keyMode: "own", keys: { gemini: "chave-do-tenant" } }),
         streamModel: spy.streamModel,
       })
     );
@@ -346,13 +346,13 @@ describe("orchestrateConversation — chave do tenant (PD-26)", () => {
     expect(spy.keys).toEqual(["chave-do-tenant"]);
   });
 
-  it("sem chave do tenant, apiKey fica indefinido (cai na plataforma)", async () => {
+  it("sem resolução (padrão), apiKey indefinido (plataforma)", async () => {
     const spy = spyApiKey();
 
     await collect(
       makeDeps({
         listAgents: async () => [makeAgent({ provider: "gemini" })],
-        // getTenantApiKeys ausente — é o padrão de produção antes do BYOK.
+        // getTenantApiKeys ausente — o padrão antes do BYOK.
         streamModel: spy.streamModel,
       })
     );
@@ -360,19 +360,44 @@ describe("orchestrateConversation — chave do tenant (PD-26)", () => {
     expect(spy.keys).toEqual([undefined]);
   });
 
-  it("resolve por provider: chave de openai não vale para um agente gemini", async () => {
+  it("modo 'platform' IGNORA a chave da org (sempre plataforma)", async () => {
+    // A decisão do PD-27: 'platform' = usa a chave da plataforma, mesmo que a org
+    // tenha uma chave cadastrada. É como o preço do tier 'sistema' se sustenta.
     const spy = spyApiKey();
 
     await collect(
       makeDeps({
         listAgents: async () => [makeAgent({ provider: "gemini" })],
-        getTenantApiKeys: async () => ({ openai: "chave-openai" }),
+        getTenantApiKeys: async () => ({ keyMode: "platform", keys: { gemini: "ignorada" } }),
         streamModel: spy.streamModel,
       })
     );
 
-    // O agente é gemini; a chave do tenant é de openai → nada casa, plataforma.
     expect(spy.keys).toEqual([undefined]);
+  });
+
+  it("modo 'own' SEM chave para o provider → erro claro, não-retryable", async () => {
+    // Enforcement do PD-27: a org optou por trazer a própria chave e não
+    // cadastrou a do provider do agente. Não pode rodar na conta da plataforma
+    // em silêncio — falha com aviso, e reenviar não resolve.
+    const spy = spyApiKey();
+
+    const events = await collect(
+      makeDeps({
+        listAgents: async () => [makeAgent({ provider: "gemini" })],
+        getTenantApiKeys: async () => ({ keyMode: "own", keys: { openai: "so-openai" } }),
+        streamModel: spy.streamModel,
+      })
+    );
+
+    const erro = events.find((e) => e.type === "agent_error") as
+      | Extract<OrchestrationEvent, { type: "agent_error" }>
+      | undefined;
+
+    expect(erro?.message).toContain("própria chave");
+    expect(erro?.retryable).toBe(false);
+    // O modelo nunca foi chamado — a falha é antes do streaming.
+    expect(spy.keys).toEqual([]);
   });
 });
 

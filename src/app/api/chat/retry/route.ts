@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getMessagesByConversationId } from "@/server/repositories/messages-repository";
 import { matchKnowledge } from "@/server/repositories/knowledge-repository";
 import { getTenantApiKeysForConversation } from "@/server/repositories/provider-keys-repository";
+import { resolveApiKeyForProvider } from "@/lib/provider-keys";
 import { generateQueryEmbedding } from "@/server/services/ai/providers/gemini-embeddings";
 import { streamModel } from "@/server/services/ai/providers/stream";
 import {
@@ -234,9 +235,10 @@ export async function POST(request: NextRequest) {
   };
   const userContent = originalUserMessage.content;
 
-  // Chave do tenant (PD-26): a org da conversa paga a própria geração. Ausente
-  // para o provider do agente = cai na chave da plataforma.
-  const tenantApiKeys = await getTenantApiKeysForConversation(conversationId);
+  // Chave do tenant (PD-26/27): a org da conversa paga a própria geração,
+  // conforme o modo dela. Resolvido uma vez; o enforcement (modo 'own' sem
+  // chave) é aplicado onde o streamModel é chamado.
+  const tenantKeys = await getTenantApiKeysForConversation(conversationId);
 
   const encoder = new TextEncoder();
 
@@ -341,10 +343,7 @@ export async function POST(request: NextRequest) {
                     contents,
                     temperature: runtimeAgent.temperature,
                     maxOutputTokens: maxOutputTokensFor(runtimeAgent.modo_resposta),
-                    apiKey:
-                      tenantApiKeys[
-                        runtimeAgent.provider as keyof typeof tenantApiKeys
-                      ],
+                    apiKey: resolveApiKeyForProvider(tenantKeys, runtimeAgent.provider),
                   }),
                 {
                   retries: 2,

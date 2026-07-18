@@ -1,8 +1,10 @@
 import Link from "next/link";
-import { Bot, Clock3, MessageSquare, Settings2 } from "lucide-react";
+import { Bot, Clock3, MessageSquare, Settings2, ShieldCheck, Users } from "lucide-react";
 import { AgentsSidebar } from "@/components/chat/agents-sidebar";
 import { getCurrentUser } from "@/lib/auth/get-user";
 import { getActiveAgents } from "@/server/repositories/agents-repository";
+import { getMembershipForUser } from "@/server/repositories/organization-members-repository";
+import { isPlatformAdmin } from "@/server/repositories/organizations-repository";
 import type { AgentListItem } from "@/types/database";
 
 function getInitials(name: string) {
@@ -27,6 +29,13 @@ export default async function ChatPage() {
   const agents = await getActiveAgents(user?.id);
   const recentAgents = agents.filter((agent) => agent.last_conversation_id);
 
+  // Entrada para as telas de config/admin (o layout já garante user + org).
+  // `owner`/`admin` gerenciam a org; só o admin de plataforma vê o /admin.
+  const [membership, platformAdmin] = user
+    ? await Promise.all([getMembershipForUser(user.id), isPlatformAdmin(user.id)])
+    : [null, false];
+  const canManageOrg = membership?.role === "owner" || membership?.role === "admin";
+
   return (
     <main className="flex h-screen overflow-hidden bg-background text-foreground">
       <AgentsSidebar agents={agents} />
@@ -47,7 +56,7 @@ export default async function ChatPage() {
               </p>
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Link
                 href="/agentes"
                 className="inline-flex h-10 items-center gap-2 rounded-md border border-border bg-surface-1 px-3.5 text-sm font-medium transition-colors hover:bg-surface-2"
@@ -55,6 +64,26 @@ export default async function ChatPage() {
                 <Settings2 className="h-4 w-4" />
                 Gerenciar
               </Link>
+
+              {canManageOrg && (
+                <Link
+                  href="/configuracoes/membros"
+                  className="inline-flex h-10 items-center gap-2 rounded-md border border-border bg-surface-1 px-3.5 text-sm font-medium transition-colors hover:bg-surface-2"
+                >
+                  <Users className="h-4 w-4" />
+                  Configurações
+                </Link>
+              )}
+
+              {platformAdmin && (
+                <Link
+                  href="/admin"
+                  className="inline-flex h-10 items-center gap-2 rounded-md border border-border bg-surface-1 px-3.5 text-sm font-medium transition-colors hover:bg-surface-2"
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  Admin
+                </Link>
+              )}
             </div>
           </header>
 

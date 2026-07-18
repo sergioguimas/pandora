@@ -5,13 +5,26 @@ import {
   encryptProviderKey,
   lastFour,
 } from "@/server/services/crypto/provider-key-cipher";
+import type {
+  KeyMode,
+  Provider,
+  TenantApiKeys,
+  TenantKeyResolution,
+} from "@/lib/provider-keys";
+
+// Reexporta os tipos/lógica puros para quem já importava daqui.
+export {
+  resolveApiKeyForProvider,
+  type KeyMode,
+  type Provider,
+  type TenantApiKeys,
+  type TenantKeyResolution,
+} from "@/lib/provider-keys";
 
 // Acesso à chave de API por tenant (PD-26). Client admin (service_role) porque a
 // tabela é fail-closed: não há policy nenhuma, nem para o dono. A autorização
 // mora na action que chama isto (owner/admin da própria org) — aqui é só a
 // mecânica de cifrar e persistir.
-
-export type Provider = "gemini" | "openai";
 
 /** O que a UI pode ver: NUNCA a chave, só provider e os 4 últimos. */
 export type ProviderKeyView = {
@@ -73,8 +86,6 @@ export async function upsertProviderKey(
 // claro só existe em memória, no instante da chamada ao provedor.
 // ---------------------------------------------------------------------------
 
-export type TenantApiKeys = Partial<Record<Provider, string>>;
-
 /** As chaves decifradas de uma org, por provider. Uma chave que não decifra
  *  (segredo trocado, dado corrompido) é IGNORADA — a org cai na chave da
  *  plataforma em vez de o chat inteiro quebrar. */
@@ -105,10 +116,11 @@ export async function getDecryptedProviderKeys(
 
 /** Resolve as chaves do tenant a partir da CONVERSA — a org da conversa é quem
  *  usa o produto (o tenant), então é a fatura dela. Um agente universal (org do
- *  sistema, sem chave) numa conversa do tenant roda com a chave DO TENANT. */
+ *  sistema, sem chave) numa conversa do tenant roda com a chave DO TENANT.
+ *  Devolve também o `keyMode` da org, para o motor aplicar o enforcement. */
 export async function getTenantApiKeysForConversation(
   conversationId: string
-): Promise<TenantApiKeys> {
+): Promise<TenantKeyResolution> {
   const { data, error } = await supabaseAdmin
     .from("conversations")
     .select("organization_id")
@@ -116,9 +128,22 @@ export async function getTenantApiKeysForConversation(
     .maybeSingle();
 
   if (error) throw new Error("Erro ao resolver a organização da conversa.");
-  if (!data?.organization_id) return {};
+  if (!data?.organization_id) return { keyMode: "platform", keys: {} };
 
-  return getDecryptedProviderKeys(data.organization_id as string);
+  const organizationId = data.organization_id as string;
+
+  const { data: org, error: orgErr } = await supabaseAdmin
+    .from("organizations")
+    .select("key_mode")
+    .eq("id", organizationId)
+    .maybeSingle();
+
+  if (orgErr) throw new Error("Erro ao resolver o modo de chave da organização.");
+
+  const keyMode: KeyMode = org?.key_mode === "own" ? "own" : "platform";
+  const keys = await getDecryptedProviderKeys(organizationId);
+
+  return { keyMode, keys };
 }
 
 export async function deleteProviderKey(

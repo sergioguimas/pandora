@@ -13,7 +13,12 @@ import { listAgentsByConversation } from "@/server/repositories/conversation-age
 // testes do orquestrador. Um `import type` é apagado na compilação, então não
 // carrega o módulo; a função real entra por import DINÂMICO no defaultDeps, que
 // os testes nunca exercitam (eles injetam deps falsos).
-import type { TenantApiKeys } from "@/server/repositories/provider-keys-repository";
+// Módulo PURO (sem server-only): seguro para os testes do orquestrador. A função
+// real de banco entra por import dinâmico no defaultDeps.
+import {
+  resolveApiKeyForProvider,
+  type TenantKeyResolution,
+} from "@/lib/provider-keys";
 import { generateQueryEmbedding } from "@/server/services/ai/providers/gemini-embeddings";
 import {
   classifyModelError,
@@ -120,10 +125,10 @@ export type OrchestratorDeps = {
   }) => Promise<Array<{ content: string }>>;
   saveMessage: typeof saveMessage;
   streamModel: (params: ModelStreamParams) => Promise<ModelStream>;
-  // Chaves do tenant (PD-26), resolvidas uma vez por request e injetadas no
-  // streamModel. Opcional: sem ela, tudo roda na chave da plataforma — que é o
-  // comportamento dos testes e o padrão antes do BYOK.
-  getTenantApiKeys?: (conversationId: string) => Promise<TenantApiKeys>;
+  // Chaves do tenant (PD-26/27), resolvidas uma vez por request e injetadas no
+  // streamModel. Devolve o modo da org + as chaves. Opcional: sem ela, tudo roda
+  // na chave da plataforma — o comportamento dos testes e o padrão antes do BYOK.
+  getTenantApiKeys?: (conversationId: string) => Promise<TenantKeyResolution>;
 };
 
 // --- Agente principal da conversa (fallback quando não há conversation_agents) ---
@@ -179,6 +184,9 @@ export const defaultDeps: OrchestratorDeps = {
       m.getTenantApiKeysForConversation(conversationId)
     ),
 };
+
+// Re-export do tipo puro para os testes do orquestrador construírem deps.
+export type { TenantKeyResolution } from "@/lib/provider-keys";
 
 // --- Filtro de histórico ------------------------------------------------------
 
@@ -513,15 +521,17 @@ export async function* orchestrateConversation(
     // síntese) usa a chave do tenant quando existe, e a da plataforma quando não
     // — sem propagar `apiKey` por cada assinatura. Uma chave já setada no params
     // (não acontece hoje) tem precedência, por segurança.
-    const tenantApiKeys = deps.getTenantApiKeys
+    const tenantKeys: TenantKeyResolution = deps.getTenantApiKeys
       ? await deps.getTenantApiKeys(conversationId)
-      : {};
+      : { keyMode: "platform", keys: {} };
     const gen: OrchestratorDeps = {
       ...deps,
       streamModel: (params) =>
         deps.streamModel({
           ...params,
-          apiKey: params.apiKey ?? tenantApiKeys[params.provider as keyof TenantApiKeys],
+          // Enforcement do modo da org (PD-27): 'platform' → chave da plataforma;
+          // 'own' → chave do tenant, e LANÇA se faltar (o erro vira agent_error).
+          apiKey: params.apiKey ?? resolveApiKeyForProvider(tenantKeys, params.provider),
         }),
     };
 

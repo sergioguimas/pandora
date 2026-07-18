@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getOrganizationIdForUserOrNull } from "@/server/repositories/organization-members-repository";
+import { getOrganizationAccessForUser } from "@/server/repositories/organization-members-repository";
 import { addConversationParticipant } from "@/server/repositories/conversation-participants-repository";
 import { addAgentsToConversation } from "@/server/repositories/conversation-agents-repository";
 
@@ -26,15 +26,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Fora do layout do dashboard, então guarda própria (PD-25): sem org, 403
-    // claro em vez de um 500 do throw de getOrganizationIdForUser.
-    const organizationId = await getOrganizationIdForUserOrNull(user.id);
-    if (!organizationId) {
+    // Fora do layout do dashboard, então guarda própria (PD-25/27): sem org ou
+    // org inativa → 403 claro em vez de um 500.
+    const access = await getOrganizationAccessForUser(user.id);
+    if (!access) {
       return NextResponse.json(
         { error: "Sua conta não está vinculada a uma organização." },
         { status: 403 }
       );
     }
+    if (!access.active) {
+      return NextResponse.json(
+        { error: "Organização suspensa. Fale com o administrador da plataforma." },
+        { status: 403 }
+      );
+    }
+    const organizationId = access.organizationId;
 
     const primaryAgentId = agentIds[0];
 

@@ -1,7 +1,10 @@
 "use client";
 
 import { useActionState } from "react";
-import { createOrganizationAction } from "@/server/actions/admin-actions";
+import {
+  createOrganizationAction,
+  setOrgActiveAction,
+} from "@/server/actions/admin-actions";
 import type { OrganizationSummary } from "@/server/repositories/organizations-repository";
 
 const initial = {
@@ -48,6 +51,40 @@ export function AdminPanel({ organizacoes }: { organizacoes: OrganizationSummary
             />
           </div>
 
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label htmlFor="dias_ativos" className="text-xs font-medium text-foreground">
+                Dias ativos
+              </label>
+              <input
+                id="dias_ativos"
+                name="dias_ativos"
+                type="number"
+                min={1}
+                className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                placeholder="ex.: 30 (vazio = sem prazo)"
+              />
+            </div>
+            <div>
+              <label htmlFor="key_mode" className="text-xs font-medium text-foreground">
+                Chave de API
+              </label>
+              <select
+                id="key_mode"
+                name="key_mode"
+                defaultValue="platform"
+                className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="platform">Do sistema (plataforma)</option>
+                <option value="own">Própria (a org cadastra a dela)</option>
+              </select>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            No modo <strong>própria</strong>, a org precisa cadastrar a chave antes de gerar —
+            a geração é bloqueada até lá.
+          </p>
+
           <button
             type="submit"
             disabled={pending}
@@ -69,22 +106,70 @@ export function AdminPanel({ organizacoes }: { organizacoes: OrganizationSummary
         </h2>
         <ul className="mt-3 divide-y divide-border rounded-lg border border-border">
           {organizacoes.map((org) => (
-            <li key={org.id} className="flex items-center justify-between px-4 py-3">
-              <div>
-                <span className="text-sm text-foreground">{org.name}</span>
-                {org.isSystem && (
-                  <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">
-                    sistema
-                  </span>
-                )}
-              </div>
-              <span className="text-xs text-muted-foreground">
-                {org.memberCount} {org.memberCount === 1 ? "membro" : "membros"}
-              </span>
-            </li>
+            <OrgRow key={org.id} org={org} />
           ))}
         </ul>
       </section>
     </div>
+  );
+}
+
+function prazoLabel(org: OrganizationSummary): string {
+  if (org.diasRestantes === null) return "sem prazo";
+  if (org.diasRestantes <= 0) return "expirada";
+  return `${org.diasRestantes} ${org.diasRestantes === 1 ? "dia" : "dias"} restantes`;
+}
+
+function OrgRow({ org }: { org: OrganizationSummary }) {
+  const [state, toggle, pending] = useActionState(setOrgActiveAction, initial);
+
+  const expirada = org.diasRestantes !== null && org.diasRestantes <= 0;
+  const efetivamenteAtiva = org.isActive && !expirada;
+
+  return (
+    <li className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-foreground">{org.name}</span>
+          {org.isSystem && (
+            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">
+              sistema
+            </span>
+          )}
+          {!efetivamenteAtiva && !org.isSystem && (
+            <span className="rounded bg-destructive/15 px-1.5 py-0.5 text-[10px] uppercase text-destructive">
+              {expirada ? "expirada" : "desativada"}
+            </span>
+          )}
+        </div>
+        <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
+          <span>{org.memberCount} {org.memberCount === 1 ? "membro" : "membros"}</span>
+          <span>{prazoLabel(org)}</span>
+          <span>
+            chave: {org.hasOwnKey ? "própria" : "do sistema"}
+            {org.keyMode === "own" && !org.hasOwnKey ? " (pendente!)" : ""}
+          </span>
+        </div>
+      </div>
+
+      {!org.isSystem && (
+        <form action={toggle} className="shrink-0">
+          <input type="hidden" name="organization_id" value={org.id} />
+          <input type="hidden" name="active" value={(!org.isActive).toString()} />
+          <button
+            type="submit"
+            disabled={pending}
+            className={
+              org.isActive
+                ? "text-xs text-destructive hover:underline disabled:opacity-50"
+                : "text-xs text-emerald-600 hover:underline disabled:opacity-50 dark:text-emerald-400"
+            }
+          >
+            {pending ? "…" : org.isActive ? "Desativar" : "Reativar"}
+          </button>
+          {state.error && <span className="ml-2 text-xs text-destructive">{state.error}</span>}
+        </form>
+      )}
+    </li>
   );
 }
