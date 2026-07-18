@@ -423,8 +423,9 @@ describe("orchestrateConversation — provider do agente (PD-12)", () => {
   it("provider sem implementação vira erro não-retryable, não fallback silencioso", async () => {
     const events = await collect(
       makeDeps({
-        listAgents: async () => [makeAgent({ provider: "openai" })],
-        // deps real: despacha de verdade e rejeita provider não implementado
+        // Um provider fora do switch (openai e gemini já existem). O cast é só
+        // para o teste — o motor não conhece "cohere".
+        listAgents: async () => [makeAgent({ provider: "cohere" as "gemini" })],
         streamModel: (await import("@/server/services/ai/providers/stream"))
           .streamModel,
       })
@@ -436,6 +437,26 @@ describe("orchestrateConversation — provider do agente (PD-12)", () => {
 
     expect(erro?.message).toContain("não implementado");
     // Reenviar não resolveria — não faz sentido oferecer "tentar novamente".
+    expect(erro?.retryable).toBe(false);
+  });
+
+  it("agente OpenAI sem chave própria → erro claro (não chama a API)", async () => {
+    // OpenAI só roda com a chave própria da org (#4). Um agente 'openai' numa org
+    // sem essa chave (aqui: sem resolução → apiKey indefinido) falha alto com
+    // mensagem clara, antes de qualquer chamada de rede.
+    const events = await collect(
+      makeDeps({
+        listAgents: async () => [makeAgent({ provider: "openai" })],
+        streamModel: (await import("@/server/services/ai/providers/stream"))
+          .streamModel,
+      })
+    );
+
+    const erro = events.find((e) => e.type === "agent_error") as
+      | Extract<OrchestrationEvent, { type: "agent_error" }>
+      | undefined;
+
+    expect(erro?.message).toContain("chave de API");
     expect(erro?.retryable).toBe(false);
   });
 });

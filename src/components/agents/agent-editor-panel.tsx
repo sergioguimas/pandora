@@ -1,6 +1,7 @@
 import type { Agent } from "@/types/database";
 import { AgentEditorForm } from "@/components/agents/agent-editor-form";
 import { DeleteAgentButton } from "@/components/agents/delete-agent-button";
+import type { Provider } from "@/lib/provider-keys";
 
 type KnowledgeSpaceOption = {
   id: string;
@@ -10,11 +11,13 @@ type KnowledgeSpaceOption = {
 type AgentEditorPanelProps = {
   agent: Agent;
   knowledgeSpaces?: KnowledgeSpaceOption[];
+  availableProviders?: Provider[];
 };
 
 export function AgentEditorPanel({
   agent,
   knowledgeSpaces,
+  availableProviders,
 }: AgentEditorPanelProps) {
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-surface-1">
@@ -31,7 +34,11 @@ export function AgentEditorPanel({
         <DeleteAgentButton agentId={agent.id} agentName={agent.nome} />
       </div>
 
-      <AgentEditorForm agent={agent} knowledgeSpaces={knowledgeSpaces} />
+      <AgentEditorForm
+        agent={agent}
+        knowledgeSpaces={knowledgeSpaces}
+        availableProviders={availableProviders}
+      />
     </div>
   );
 }

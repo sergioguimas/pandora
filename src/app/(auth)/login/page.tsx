@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { signInWithEmailPassword } from "@/server/actions/auth-actions";
+import { AuthHashHandler } from "@/components/auth/auth-hash-handler";
 
 type LoginPageProps = {
   searchParams?: Promise<{
@@ -32,6 +33,10 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         <p className="mt-1 text-sm text-muted-foreground">
           Acesse sua central de agentes.
         </p>
+
+        {/* Rede de segurança: se o link do e-mail veio no formato de hash
+            (#access_token=…), processa aqui e vai para /definir-senha. */}
+        <AuthHashHandler />
 
         {created === "1" && (
           <div className="mt-5 rounded-md border border-primary/30 bg-primary-soft px-4 py-3 text-sm text-primary">

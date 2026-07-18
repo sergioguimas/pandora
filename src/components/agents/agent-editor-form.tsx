@@ -18,6 +18,8 @@ import {
   RESPONSE_MODE_MAX_TOKENS,
   RESPONSE_MODES,
 } from "@/lib/response-mode";
+import { modelsFor } from "@/lib/model-catalog";
+import type { Provider } from "@/lib/provider-keys";
 import { cn } from "@/lib/utils";
 
 type KnowledgeSpaceOption = {
@@ -28,6 +30,8 @@ type KnowledgeSpaceOption = {
 type AgentEditorFormProps = {
   agent: Agent;
   knowledgeSpaces?: KnowledgeSpaceOption[];
+  /** Providers que a org pode usar (#4). Gemini sempre; openai só com chave. */
+  availableProviders?: Provider[];
 };
 
 const initialState = {
@@ -68,10 +72,23 @@ function SaveButton() {
 export function AgentEditorForm({
   agent,
   knowledgeSpaces = [],
+  availableProviders = ["gemini"],
 }: AgentEditorFormProps) {
   const [state, formAction] = useActionState(updateAgent, initialState);
   const [tab, setTab] = useState<Tab>("geral");
   const [isAtivo, setIsAtivo] = useState(agent.ativo);
+
+  // Provider/modelo controlados: trocar o provider troca a lista de modelos.
+  // Se o provider atual do agente não está mais disponível (ex.: a org tinha
+  // chave OpenAI e removeu), cai para o primeiro disponível.
+  const initialProvider = (
+    availableProviders.includes(agent.provider as Provider) ? agent.provider : availableProviders[0]
+  ) as Provider;
+  const [provider, setProvider] = useState<Provider>(initialProvider);
+  const modelos = modelsFor(provider);
+  const [model, setModel] = useState<string>(
+    modelos.some((m) => m.id === agent.model) ? agent.model : (modelos[0]?.id ?? "")
+  );
 
   return (
     <form action={formAction} className="flex flex-col">
@@ -86,9 +103,53 @@ export function AgentEditorForm({
             </h2>
             <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-subtle-foreground">
               <span>slug: {agent.slug}</span>
-              <span>provider: {agent.provider}</span>
-              <span>model: {agent.model}</span>
             </div>
+
+            {/* Provider + modelo (#4). OpenAI só aparece se a org tem a chave. */}
+            <div className="flex flex-wrap items-end gap-3 pt-1">
+              <label className="flex flex-col gap-1 text-[11px] font-medium text-muted-foreground">
+                Provider
+                <select
+                  name="provider"
+                  value={provider}
+                  onChange={(e) => {
+                    const p = e.target.value as Provider;
+                    setProvider(p);
+                    setModel(modelsFor(p)[0]?.id ?? "");
+                  }}
+                  className={cn("h-9 w-40", fieldClass())}
+                >
+                  {availableProviders.map((p) => (
+                    <option key={p} value={p}>
+                      {p === "gemini" ? "Google Gemini" : "OpenAI"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-1 text-[11px] font-medium text-muted-foreground">
+                Modelo
+                <select
+                  name="model"
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  className={cn("h-9 w-56", fieldClass())}
+                >
+                  {modelos.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            {availableProviders.length === 1 && (
+              <p className="pt-1 text-[11px] text-subtle-foreground">
+                Para usar modelos OpenAI, cadastre a chave OpenAI da organização em
+                Configurações → Chaves de API.
+              </p>
+            )}
           </div>
 
           <label className="inline-flex cursor-pointer items-center gap-3 rounded-md border border-border bg-surface-2 px-3 py-2 transition-colors hover:bg-surface-3">

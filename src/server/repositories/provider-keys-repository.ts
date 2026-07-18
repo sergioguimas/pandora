@@ -146,6 +146,22 @@ export async function getTenantApiKeysForConversation(
   return { keyMode, keys };
 }
 
+/** true se a org tem chave cadastrada para o provider. Usado para validar, no
+ *  save do agente, que um agente 'openai' só é aceito com a chave OpenAI (#4). */
+export async function orgHasProviderKey(
+  organizationId: string,
+  provider: Provider
+): Promise<boolean> {
+  const { count, error } = await supabaseAdmin
+    .from("organization_provider_keys")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", organizationId)
+    .eq("provider", provider);
+
+  if (error) throw new Error("Erro ao verificar chave do provider.");
+  return (count ?? 0) > 0;
+}
+
 export async function deleteProviderKey(
   organizationId: string,
   provider: Provider

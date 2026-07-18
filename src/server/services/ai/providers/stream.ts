@@ -1,3 +1,4 @@
+import OpenAI from "openai";
 import { getGeminiClient } from "@/lib/gemini/client";
 
 // Ponto único de despacho por provider (PD-12).
@@ -21,7 +22,7 @@ export const AGENT_PROVIDERS = ["gemini", "openai"] as const;
 export type AgentProvider = (typeof AGENT_PROVIDERS)[number];
 
 /** Providers com implementação real. Os demais existem só no schema. */
-export const IMPLEMENTED_PROVIDERS: readonly AgentProvider[] = ["gemini"];
+export const IMPLEMENTED_PROVIDERS: readonly AgentProvider[] = ["gemini", "openai"];
 
 export type ModelContents = Array<{
   role: "user" | "model";
@@ -61,6 +62,45 @@ async function streamWithGemini(params: ModelStreamParams): Promise<ModelStream>
   });
 }
 
+async function streamWithOpenAI(params: ModelStreamParams): Promise<ModelStream> {
+  // OpenAI SÓ funciona com a chave própria da org (PD-26/#4): a plataforma não
+  // tem chave OpenAI. Sem `apiKey` aqui, falha alto com mensagem clara em vez de
+  // um erro genérico do SDK. (Em modo 'own' sem a chave, o enforcement já barra
+  // antes; isto cobre um agente 'openai' numa org modo 'platform'.)
+  if (!params.apiKey) {
+    throw new Error(
+      "O provider OpenAI requer a chave de API própria da organização. " +
+        "Cadastre-a em Configurações → Chaves de API."
+    );
+  }
+
+  const client = new OpenAI({ apiKey: params.apiKey });
+
+  // `contents` é o formato do Gemini ({ role, parts:[{text}] }). Traduz para o
+  // do OpenAI ({ role, content }): 'model' vira 'assistant'; o texto dos parts é
+  // concatenado. A instrução de sistema já vem embutida como o primeiro turno.
+  const messages = params.contents.map((turn) => ({
+    role: (turn.role === "model" ? "assistant" : "user") as "assistant" | "user",
+    content: turn.parts.map((p) => p.text).join(""),
+  }));
+
+  const stream = await client.chat.completions.create({
+    model: params.model,
+    messages,
+    temperature: params.temperature,
+    max_tokens: params.maxOutputTokens,
+    stream: true,
+  });
+
+  // Adapta o stream do OpenAI ao contrato ModelStream (AsyncIterable<{text?}>).
+  return (async function* () {
+    for await (const chunk of stream) {
+      const text = chunk.choices[0]?.delta?.content ?? "";
+      if (text) yield { text };
+    }
+  })();
+}
+
 /**
  * Abre o streaming no provider do agente.
  *
@@ -72,6 +112,9 @@ export async function streamModel(params: ModelStreamParams): Promise<ModelStrea
   switch (params.provider) {
     case "gemini":
       return streamWithGemini(params);
+
+    case "openai":
+      return streamWithOpenAI(params);
 
     default:
       throw new Error(

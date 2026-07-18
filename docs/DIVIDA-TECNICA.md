@@ -37,6 +37,31 @@ tem id, severidade, arquivos e ação recomendada. Use os ids (`PD-xx`) em commi
 
 ## 🔴 Alta
 
+### PD-29 — Conta nova nasceu `is_platform_admin = true` em produção 🔴
+Descoberto testando o PD-25/27: o dono de uma org recém-criada tinha acesso ao painel de
+admin de plataforma (criar/gerir organizações) — escalonamento de privilégio.
+
+**O código está correto** (verificado): a migration cria a coluna com `default false`, o
+trigger `handle_new_user` não toca nela, e nada no app grava `true` (só o `update` manual
+de bootstrap). Logo, o **default da coluna em produção** não deve estar `false` — provável
+resíduo da aplicação manual e fora de ordem das migrations (`add column if not exists` não
+corrige o default de uma coluna que já existia).
+
+**Ação** (só no banco de prod, o código não muda):
+```sql
+select column_default from information_schema.columns
+ where table_schema='public' and table_name='profiles' and column_name='is_platform_admin';
+-- se != false:
+alter table public.profiles alter column is_platform_admin set default false;
+-- e zerar os dados errados, mantendo só o admin real:
+update public.profiles set is_platform_admin = false where id <> '<uuid-do-admin>';
+```
+Corrigido pontualmente no teste (update escopado). **Falta confirmar o default e travar**,
+para contas futuras não reincidirem. Reavaliar se um dump novo de prod deve regerar o
+baseline (o default divergente indica drift entre `migrations/` e prod).
+
+
+
 ### PD-25 — Cadastro aberto + todo usuário na mesma organização 🔴
 
 > **Estado (2026-07-17)**: schema, servidor e **UI de admin e membros prontos**. Feito:
@@ -804,4 +829,7 @@ por participante. Removidas as quatro duplicadas; restaram só as de participant
 | 2026-07-17 | PD-26 | **Ponta a ponta.** Chave do tenant injetada no `streamModel` (orquestrador embrulha `deps.streamModel`; retry passa direto), resolvida pela org da conversa, por provider. `getGeminiClient(apiKey?)`. 3 testes de fiação (100 no total). Chave que não decifra cai na plataforma com log. Removido `const ai` morto do retry (warning de lint do PD-12). |
 | 2026-07-17 | PD-25 (orgless) | Usuário sem organização vê tela (`NoOrganization`) no layout do dashboard, não um 500; `api/conversations` responde 403. |
 | 2026-07-17 | PD-27 | Ciclo de vida da org (migration `20260717030000`): `is_active`, `active_until`, `key_mode`. Painel admin: criar com dias/modo, lista com dias restantes + chave utilizada + desativar/reativar. Bloqueio de org inativa em camada de app (layout `OrgSuspended` + API 403). Enforcement do modo 'own' no motor (sem chave → erro claro, não-retryável). Nav para /admin e /configuracoes no header do chat. **109 testes** (+8 lifecycle puro), **70 RLS** (+4 schema). Decisões: enforcement, bloqueio em app, OpenAI a implementar (#4, próximo). |
+| 2026-07-18 | PD-30 (#4) | OpenAI ponta a ponta no motor (`streamWithOpenAI`, SDK `openai`, despacho no `providers/stream.ts`; adapta contents Gemini→OpenAI; exige chave própria da org, senão erro claro). Picker de provider/modelo no editor de agentes (`src/lib/model-catalog.ts`), com OpenAI só se a org tem chave OpenAI. `updateAgent` passa a gravar+validar provider/model. **114 testes** (+4: catálogo puro + openai sem chave). RLS inalterada (sem schema). Decisões: OpenAI own-key only; picker no editor. |
+| 2026-07-17 | PD-29 | **Novo 🔴**: conta nova nasceu `is_platform_admin=true` em prod. Código correto (default false, trigger não toca, nada grava true). Suspeita: default da coluna divergente em prod (aplicação manual das migrations). Diagnóstico+fix de banco no item. |
+| 2026-07-17 | PD-28 (hash) | Rede de segurança para o fluxo implícito: `AuthHashHandler` no /login lê `#access_token=…`, faz `setSession` e vai a /definir-senha — funciona mesmo com o template padrão (`{{ .ConfirmationURL }}`). |
 | 2026-07-17 | PD-28 | Fluxo de definição/recuperação de senha: rota `/auth/confirm` (verifyOtp com token_hash — não PKCE, que não serve para link de e-mail), página `/definir-senha` (updateUser), `/recuperar-senha` (resetPasswordForEmail). Faltava a página que processa o token do e-mail — o link caía no /login e falhava. **Exige config no Supabase**: templates de e-mail apontando para `/auth/confirm?token_hash=…&type=…&next=/definir-senha`, além de SMTP e Site URL. |

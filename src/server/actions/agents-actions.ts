@@ -3,8 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/get-user";
 import { getOrganizationIdForUser } from "@/server/repositories/organization-members-repository";
+import { orgHasProviderKey } from "@/server/repositories/provider-keys-repository";
 import { DEFAULT_RESPONSE_MODE, isResponseMode } from "@/lib/response-mode";
+import { isValidModel } from "@/lib/model-catalog";
 
 type UpdateAgentState = {
   ok: boolean;
@@ -108,6 +111,31 @@ export async function updateAgent(
     };
   }
 
+  // Provider + modelo (#4). O <select> é conveniência; o servidor revalida.
+  const provider = String(formData.get("provider") ?? "").trim();
+  const model = String(formData.get("model") ?? "").trim();
+  if (provider !== "gemini" && provider !== "openai") {
+    return { ok: false, error: "Provider inválido." };
+  }
+  if (!isValidModel(provider, model)) {
+    return { ok: false, error: "Modelo inválido para o provider escolhido." };
+  }
+  // OpenAI só é permitido se a org tem a chave própria (a plataforma não tem
+  // chave OpenAI). Barra aqui em vez de deixar a geração falhar depois.
+  if (provider === "openai") {
+    const user = await getCurrentUser();
+    if (!user) return { ok: false, error: "Não autenticado." };
+    const organizationId = await getOrganizationIdForUser(user.id);
+    if (!(await orgHasProviderKey(organizationId, "openai"))) {
+      return {
+        ok: false,
+        error:
+          "Para usar um modelo OpenAI, cadastre a chave OpenAI da organização em " +
+          "Configurações → Chaves de API.",
+      };
+    }
+  }
+
   const supabase = await createClient();
 
   const { error } = await supabase
@@ -117,6 +145,8 @@ export async function updateAgent(
       descricao: descricao || null,
       prompt_base: promptBase,
       ativo,
+      provider,
+      model,
       modo_resposta: modoRespostaRaw,
       knowledge_space_id: knowledgeSpaceIdRaw || null,
       category: category || null,

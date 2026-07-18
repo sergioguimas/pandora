@@ -9,6 +9,7 @@ import { KnowledgeIngestForm } from "@/components/agents/knowledge-ingest-form";
 import { KnowledgeDocumentsList } from "@/components/agents/knowledge-documents-list";
 import { ChevronLeft, LayoutGrid, Settings2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { Provider } from "@/lib/provider-keys";
 import type { KnowledgeDocumentListItem } from "@/server/repositories/knowledge-repository";
 
 type ConversationOption = {
@@ -27,6 +28,7 @@ type AgentsPageProps = {
   knowledgeSpaces: KnowledgeSpaceOption[];
   conversations: ConversationOption[];
   knowledgeDocuments: KnowledgeDocumentListItem[];
+  availableProviders?: Provider[];
 };
 
 export function AgentsPage({
@@ -35,6 +37,7 @@ export function AgentsPage({
   conversations,
   knowledgeSpaces,
   knowledgeDocuments,
+  availableProviders,
 }: AgentsPageProps) {
   const activeAgents = agents.filter((agent) => agent.ativo);
 
@@ -110,6 +113,7 @@ export function AgentsPage({
               <AgentEditorPanel
                 agent={selectedAgent}
                 knowledgeSpaces={knowledgeSpaces}
+                availableProviders={availableProviders}
               />
 
               <KnowledgeIngestForm
