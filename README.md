@@ -1,11 +1,12 @@
 # 🧠 Pandora
 
+[![CI](https://github.com/sergioguimas/pandora/actions/workflows/ci.yml/badge.svg)](https://github.com/sergioguimas/pandora/actions/workflows/ci.yml)
 ![Status](https://img.shields.io/badge/status-em%20desenvolvimento-yellow)
 ![Version](https://img.shields.io/badge/version-0.1.0-blue)
 ![Next.js](https://img.shields.io/badge/Next.js-16-black)
 ![Supabase](https://img.shields.io/badge/Supabase-Postgres%20%2B%20pgvector-3ECF8E)
-![IA](https://img.shields.io/badge/IA-Google%20Gemini-4285F4)
-![License](https://img.shields.io/badge/license-private-red)
+![IA](https://img.shields.io/badge/IA-Gemini%20%2B%20OpenAI-4285F4)
+![Licença](https://img.shields.io/badge/licen%C3%A7a-todos%20os%20direitos%20reservados-7D2430)
 
 > Hub interno de agentes de IA especializados para produtividade administrativa.
 
@@ -31,6 +32,19 @@ tendo suas respostas consolidadas por um agente sintetizador.
 - 👥 **Organizações e compartilhamento** de conversas por participantes.
 - 🎛️ **CRUD de agentes** e ingestão de base de conhecimento.
 - ⚡ **Realtime** para sincronizar mensagens entre abas/participantes.
+- 🔀 **Multi-provider**: Gemini e OpenAI, escolhidos por agente, com despacho
+  explícito — provider sem implementação falha alto, nunca em silêncio.
+
+### Como isto é verificado
+
+| Suíte | O que cobre | Custo para rodar |
+|---|---|---|
+| `npm test` | **114 testes** em 10 arquivos: orquestração da rodada, isolamento do filtro de histórico, classificação e retry de erro do provider, fallback textual do RAG, chunking, modos de resposta | ~4 s, **sem banco, sem HTTP e sem chamar o modelo** — é o loop de desenvolvimento |
+| `npm run test:rls` | **8 arquivos de política RLS** contra um Postgres real: isolamento entre organizações, participantes de conversa, escopo da base de conhecimento, chaves por tenant, ciclo de vida da organização, provisionamento e varredura de policies abertas | precisa de Postgres; roda em job separado no CI |
+
+A separação é deliberada: o `npm test` tem que continuar respondendo em segundos
+para ser usado a cada alteração. A suíte de RLS é lenta por natureza e não pode
+contaminar esse loop — por isso vive num job próprio, em paralelo.
 
 > ⚠️ Consulte [`docs/DIVIDA-TECNICA.md`](docs/DIVIDA-TECNICA.md) para o que está
 > **incompleto, duplicado ou com bug conhecido** antes de mexer no código.
@@ -46,12 +60,16 @@ tendo suas respostas consolidadas por um agente sintetizador.
 | Backend | **Route Handlers + Server Actions** do próprio Next (não há servidor Fastify) |
 | Banco | **PostgreSQL** (Supabase) + extensão **pgvector** |
 | Auth / Storage / Realtime | **Supabase** |
-| IA | **Google Gemini** via `@google/genai` (geração + embeddings 768d) |
+| IA | **Google Gemini** via `@google/genai` (geração + embeddings 768d) e **OpenAI** via `openai` (geração) |
 | Validação | Zod + React Hook Form |
 | Infra | Docker (multi-stage, `output: standalone`) + Traefik (TLS) |
 
-> Nota: o provider `openai` existe na interface de código mas **ainda não está
-> implementado** — hoje só o Gemini funciona.
+> **Providers.** Gemini e OpenAI têm implementação real, escolhidas por agente
+> em `providers/stream.ts` — o ponto único de despacho. O OpenAI só funciona com
+> a **chave própria da organização**: a plataforma não tem chave OpenAI, e um
+> agente `openai` numa organização em modo `platform` falha com mensagem
+> explícita em vez de gerar com outro modelo por engano. Embeddings continuam
+> exclusivamente no Gemini.
 
 ---
 
@@ -115,6 +133,7 @@ npm run dev
 | `npm run lint` | ESLint |
 | `npm test` | Testes (vitest) — não precisa de banco nem de API key |
 | `npm run test:watch` | Testes em watch |
+| `npm run test:rls` | Testes de política RLS contra Postgres real (precisa de banco) |
 | `npm run reembed:knowledge` | Manutenção: regera os embeddings da base (ver aviso abaixo) |
 
 > ⚠️ **`taskType` dos embeddings é um par.** Query usa `RETRIEVAL_QUERY` e documento usa
@@ -122,8 +141,17 @@ npm run dev
 > em `providers/gemini-embeddings.ts`, rode `npm run reembed:knowledge` — senão os
 > chunks antigos ficam num espaço vetorial diferente e o RAG deixa de encontrá-los.
 
-O CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) roda lint → testes →
-type-check → build em push na `main` e em PR.
+O CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) roda em push na `main`
+e em todo PR, com **dois jobs em paralelo**:
+
+- **`verify`** — lint → testes → type-check → build, em Node 22 (mesma major do
+  Dockerfile). O build entra porque é o único passo que detecta import de módulo
+  server-only em client component.
+- **`rls`** — sobe um `pgvector/pgvector:pg17` (mesma major de produção) e roda a
+  suíte de políticas contra ele. Não usa a imagem `supabase/postgres`: papéis e
+  schema de extensões estão explícitos em `scripts/sql/test-db-bootstrap.sql`, e o
+  schema `auth` vem do dump real — nada de que a RLS depende fica escondido dentro
+  de uma imagem.
 
 > Rode `npm run build` antes de abrir PR quando mexer em módulo compartilhado: é o
 > único passo que detecta import de código server-only em client component — o
@@ -198,4 +226,13 @@ Detalhes completos em [`docs/FLUXO-DE-CHAT.md`](docs/FLUXO-DE-CHAT.md).
 
 ## 📄 Licença
 
-Uso interno — projeto privado.
+**Código aberto para leitura, todos os direitos reservados.**
+
+O repositório é público de propósito: a arquitetura, as políticas de RLS e as
+decisões técnicas estão à vista de quem quiser auditá-las antes de confiar no
+produto. Isso **não** é uma licença de uso — na ausência de um arquivo `LICENSE`,
+o padrão legal é que não há permissão de uso, cópia, modificação ou
+redistribuição do código.
+
+© Sérgio Guimarães. Para uso comercial, licenciamento ou parceria:
+[sgdev.cloud](https://sgdev.cloud).

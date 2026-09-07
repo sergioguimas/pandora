@@ -24,6 +24,9 @@
 .DS_Store
 *.pem
 
+# local Claude Code config (hooks, agents, permissions — machine-specific)
+.claude/
+
 # debug
 npm-debug.log*
 yarn-debug.log*
@@ -41,6 +44,9 @@ supabase/schema/*_data_*.sql
 
 # vercel
 .vercel
+
+# Documentos internos de negócio (não versionar)
+business/
 
 # typescript
 *.tsbuildinfo
