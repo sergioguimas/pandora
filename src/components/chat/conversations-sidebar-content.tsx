@@ -5,6 +5,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { MessageSquare, Settings2, UsersRound } from "lucide-react";
 import type { ConversationSidebarItem } from "@/components/chat/agents-sidebar";
+import { SolaSeal } from "@/components/layout/sola-seal";
 
 type ConversationsSidebarContentProps = {
   conversations: ConversationSidebarItem[];
@@ -122,6 +123,10 @@ export function ConversationsSidebarContent({
             );
           })}
         </div>
+      </div>
+
+      <div className="flex justify-center border-t border-border px-4 py-3">
+        <SolaSeal />
       </div>
     </aside>
   );
